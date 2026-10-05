@@ -1,0 +1,21 @@
+pkgbase = arch-island-git
+	pkgdesc = A native Qt Quick Linux system monitor as a living Caribbean island
+	pkgver = 0.1.0.r0.g0000000
+	pkgrel = 1
+	url = https://github.com/temp2003late/arch-island
+	arch = x86_64
+	arch = aarch64
+	license = MIT
+	makedepends = git
+	makedepends = cmake
+	makedepends = ninja
+	depends = qt6-base
+	depends = qt6-declarative
+	depends = qt6-svg
+	depends = qt6-wayland
+	provides = arch-island
+	conflicts = arch-island
+	source = arch-island::git+https://github.com/temp2003late/arch-island.git
+	sha256sums = SKIP
+
+pkgname = arch-island-git

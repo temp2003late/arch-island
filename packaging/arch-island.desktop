@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Arch Island
+Comment=A living island for your Linux system metrics
+Exec=arch-island
+Icon=arch-island
+Terminal=false
+Categories=System;Monitor;
+StartupNotify=true

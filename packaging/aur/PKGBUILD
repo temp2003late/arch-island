@@ -1,0 +1,35 @@
+# Maintainer: boryslavsky <boryslavsky@gmail.com>
+pkgname=arch-island-git
+pkgver=0.1.0.r0.g0000000
+pkgrel=1
+pkgdesc='A native Qt Quick Linux system monitor as a living Caribbean island'
+arch=('x86_64' 'aarch64')
+url='https://github.com/temp2003late/arch-island'
+license=('MIT')
+depends=('qt6-base' 'qt6-declarative' 'qt6-svg' 'qt6-wayland')
+makedepends=('git' 'cmake' 'ninja')
+provides=('arch-island')
+conflicts=('arch-island')
+source=("arch-island::git+$url.git")
+sha256sums=('SKIP')
+
+pkgver() {
+    cd "$srcdir/arch-island"
+    printf '0.1.0.r%s.g%s' "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+build() {
+    cmake -S "$srcdir/arch-island" -B "$srcdir/build" -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DBUILD_TESTING=ON
+    cmake --build "$srcdir/build"
+}
+
+check() {
+    ctest --test-dir "$srcdir/build" --output-on-failure
+}
+
+package() {
+    DESTDIR="$pkgdir" cmake --install "$srcdir/build"
+}
