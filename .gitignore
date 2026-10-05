@@ -1,0 +1,6 @@
+/build*/
+/stage/
+*.user
+packaging/aur/src/
+packaging/aur/pkg/
+packaging/aur/*.pkg.tar.*
