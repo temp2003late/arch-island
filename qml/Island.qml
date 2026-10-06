@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import ArchIsland 1.0
 Item {
     id: island
     property bool night: false
@@ -45,30 +46,39 @@ Item {
     Item {
         id: world
         width: 1600; height: 1000
-        anchors.centerIn: parent
-        // Extend only the outer sea, keeping the original pixels and landmark coordinates.
-        // The height floor prevents gaps above/below in narrower windows.
-        scale: Math.max(island.width/1728, island.height/1000)
-        ShoreExtension { x: -64; rightEdge: false }
-        ShoreExtension { x: 1600; rightEdge: true }
+        transformOrigin: Item.TopLeft
+        x: (island.width-width*scale)/2
+        // Keep the moon inside the crop even in an ultrawide window.
+        property real visibleTop: Math.min(80, Math.max(0, (height-island.height/scale)/2))
+        y: -visibleTop*scale
+        // One complete panorama, with all effects positioned in the same world space.
+        scale: Math.max(island.width/2000, island.height/1000)
+        function tagX(preferred, pixels) {
+            const left = (width - island.width/scale)/2
+            return Math.max(left + 12/scale, Math.min(preferred, left + (island.width-pixels-12)/scale))
+        }
+        function tagY(preferred) {
+            const top = visibleTop
+            return Math.max(top + 12/scale, Math.min(preferred, top + (island.height-42)/scale))
+        }
         Image {
             id: dayArt
             objectName: "dayArtwork"
-            anchors.fill: parent
-            source: "qrc:/assets/art/island-day.png"
+            x: -200; y: 0; width: 2000; height: 1000
+            source: "qrc:/assets/art/island-day-wide.png"
             smooth: true; mipmap: true
             layer.enabled: GraphicsInfo.api !== GraphicsInfo.Software
             layer.effect: ShaderEffect {
                 property real sceneTime: island.sceneTime
-                property real darkness: island.night ? 1 : 0
+                property real darkness: 0
                 fragmentShader: "qrc:/assets/shaders/living.frag.qsb"
             }
         }
         Image {
             id: nightArt
             objectName: "nightArtwork"
-            anchors.fill: parent
-            source: "qrc:/assets/art/island-night.png"
+            x: -200; y: 0; width: 2000; height: 1000
+            source: "qrc:/assets/art/island-night-wide.png"
             opacity: island.night ? 1 : 0
             smooth: true; mipmap: true
             layer.enabled: GraphicsInfo.api !== GraphicsInfo.Software
@@ -81,7 +91,7 @@ Item {
         }
         // Soft atmospheric layers share the same clock as the sea and town.
         Image {
-            x: 469; y: 30; width: 160; height: 160
+            x: 499; y: 101; width: 120; height: 120
             source: "qrc:/assets/glow.svg"; sourceSize: Qt.size(240,240)
             opacity: island.cpuLoad < 0 ? 0 : (0.16+island.heat*0.72) * (0.94 + 0.06*Math.sin(island.sceneTime*1.3))
             Behavior on opacity { NumberAnimation { duration: island.animate ? 800 : 0 } }
@@ -92,7 +102,7 @@ Item {
                 id: smoke
                 required property int index
                 property real phase: (island.sceneTime / 7 + index / 6) % 1
-                x: 504+phase*48+index*3; y: 85-phase*95
+                x: 536+phase*48+index*3; y: 126-phase*95
                 width: 48+phase*70; height: width
                 source: "qrc:/assets/smoke.svg"; sourceSize: Qt.size(128,128)
                 visible: island.cpuLoad >= 0
@@ -107,17 +117,17 @@ Item {
                 required property int index
                 property real phase: (island.sceneTime / (2.8 + index*0.18) + index/7) % 1
                 visible: island.cpuLoad > 30
-                x: 546+Math.sin(index*4.3)*phase*32
-                y: 111-phase*(35+island.heat*80)
+                x: 560+Math.sin(index*4.3)*phase*32
+                y: 170-phase*(35+island.heat*80)
                 width: 1.5+index%2; height: width; radius: width
                 color: "#ffb553"; opacity: Math.sin(Math.PI*phase)*island.heat
 
             }
         }
         Image {
-            x: 1204; y: 157; width: 500; height: 146
-            source: "qrc:/assets/beam.svg"; sourceSize: Qt.size(750,219)
-            visible: island.night; opacity: 0.7
+            x: 1178; y: 220; width: 420; height: 118
+            source: "qrc:/assets/beam.svg"; sourceSize: Qt.size(840,236)
+            opacity: nightArt.opacity * (0.18 + 0.05*Math.sin(island.sceneTime*0.22 + 0.8))
             transformOrigin: Item.Left
             rotation: -1 + 15 * Math.sin(island.sceneTime * 0.22)
 
@@ -127,56 +137,18 @@ Item {
             id: boat
             objectName: "sailingBoat"
             x: Math.max(330, (world.width-island.width/world.scale)/2 + 185) + Math.min(165, island.width/world.scale*0.13) * Math.cos(island.sailingPhase)
-            property real routeCenterY: Math.min(745, (world.height + island.height/world.scale)/2 - height - 40)
+            // Include the entire bobbing orbit plus a 72-screen-pixel water margin.
+            property real routeCenterY: Math.min(745, world.visibleTop + island.height/world.scale - height - 36 - 72/world.scale)
             y: routeCenterY + 34 * Math.sin(island.sailingPhase) + 1.6 * Math.sin(island.sceneTime * 1.1)
             width: 190; height: 190
-            property real heading: Math.atan2(34 * Math.cos(island.sailingPhase), -165 * Math.sin(island.sailingPhase)) * 180 / Math.PI
-            Item {
+            // Convert the screen-space tangent into yaw for the elevated 3D camera.
+            property real heading: Math.atan2(34 * Math.cos(island.sailingPhase) / Math.sin(24*Math.PI/180), -Math.min(165, island.width/world.scale*0.13) * Math.sin(island.sailingPhase)) * 180 / Math.PI
+            Sailboat {
+                objectName: "sailboatArtwork"
                 anchors.fill: parent
-                rotation: 1.1 * Math.sin(island.sceneTime * 0.8)
-                transform: Rotation { origin.x: 95; origin.y: 150; axis { x: 0; y: 1; z: 0 } angle: boat.heading }
-                Image {
-                    x: -58; y: 152; width: 175; height: 44
-                    source: "qrc:/assets/wake.svg"; sourceSize: Qt.size(400,108)
-                    opacity: 0.3 + 0.08 * Math.sin(island.sceneTime * 1.2)
-                }
-                Image {
-                    objectName: "sailboatArtwork"
-                    anchors.fill: parent; source: "qrc:/assets/art/sailboat.png"
-                    smooth: true; mipmap: true
-                }
-            }
-        }
-        // Small independent routes bring the promenade and working harbor to life.
-        Item {
-            x: 1265; y: 527; width: 1; height: 63
-            transformOrigin: Item.Top
-            rotation: 2.5*Math.sin(island.sceneTime*0.55)
-            Rectangle { width: 1; height: 59; color: island.night ? "#665c4b" : "#5b5446" }
-            Rectangle { x: -2; y: 58; width: 5; height: 5; radius: 2; color: "#987448" }
-        }
-        Repeater {
-            model: 9
-            Item {
-                required property int index
-                property real walk: (1 - Math.cos(island.sceneTime * (0.025 + index*0.002) + index*1.7)) / 2
-                x: index < 5 ? 891 + walk*215 : 1170 + walk*205
-                y: index < 5 ? 601 + walk*38 + index*4 : 650 + walk*40 + (index-5)*5
-                width: 4; height: 8
-                Rectangle { x: 1; width: 2.5; height: 2.5; radius: 2; color: "#bb9874" }
-                Rectangle { y: 2; width: 3.5; height: 5; radius: 1.5; color: index%2 ? "#7faaa9" : "#b69b73" }
-                rotation: 2 * Math.sin(island.sceneTime*3 + index)
-            }
-        }
-        Repeater {
-            model: 12
-            Image {
-                required property int index
-                property var lamps: [[480,270],[571,305],[747,354],[790,410],[899,447],[974,482],[720,540],[894,582],[1021,609],[1166,643],[1280,669],[1390,694]]
-                x: lamps[index][0]-14; y: lamps[index][1]-14
-                width: 28; height: 28
-                source: "qrc:/assets/glow.svg"
-                opacity: (island.night ? 0.2 : 0.045) * (0.8 + 0.2*Math.sin(island.sceneTime*0.65 + index*2.3))
+                heading: boat.heading
+                sceneTime: island.sceneTime
+                darkness: nightArt.opacity
             }
         }
         Repeater {
@@ -185,7 +157,7 @@ Item {
                 required property int index
                 x: 890 + 180*Math.sin(island.sceneTime*0.022 + index*0.35)
                 y: 100 + index*10 + 10*Math.sin(island.sceneTime*0.065 + index)
-                opacity: island.night ? 0.3 : 0.6
+                opacity: 0.55 - nightArt.opacity*0.35
                 Rectangle { width: 5; height: 1; color: "#a4b8c5"; rotation: -15-16*Math.sin(island.sceneTime*2.4+index); transformOrigin: Item.Right }
                 Rectangle { x: 5; width: 5; height: 1; color: "#a4b8c5"; rotation: 15+16*Math.sin(island.sceneTime*2.4+index); transformOrigin: Item.Left }
             }
@@ -193,45 +165,47 @@ Item {
         Button {
             id: volcanoButton
             objectName: "volcanoButton"
-            x: 435; y: 70; width: 230; height: 207
+            x: 453; y: 141; width: 216; height: 173
             text: "Open CPU processes"
             Accessible.name: text
             hoverEnabled: true
-            background: Rectangle { color: "transparent"; radius: 28; border.color: volcanoButton.activeFocus ? "#ffaf7b" : "transparent" }
+            background: Rectangle { color: "transparent"; radius: 28; border.color: volcanoButton.visualFocus ? "#ffaf7b" : "transparent" }
             contentItem: Item {}
             onClicked: island.volcanoClicked()
+            ToolTip.delay: 650; ToolTip.timeout: 2500
             ToolTip.visible: hovered; ToolTip.text: "Volcano · processes by CPU"
         }
         Button {
             id: portButton
             objectName: "portButton"
-            x: 965; y: 587; width: 264; height: 138
+            x: 985; y: 625; width: 340; height: 155
             text: "Open memory processes"
             Accessible.name: text
             hoverEnabled: true
-            background: Rectangle { color: "transparent"; radius: 22; border.color: portButton.activeFocus ? "#83c7ff" : "transparent" }
+            background: Rectangle { color: "transparent"; radius: 22; border.color: portButton.visualFocus ? "#83c7ff" : "transparent" }
             contentItem: Item {}
             onClicked: island.portClicked()
+            ToolTip.delay: 650; ToolTip.timeout: 2500
             ToolTip.visible: hovered; ToolTip.text: "Harbor · processes by memory"
         }
-        Rectangle { x: 592; y: 146; width: 82; height: 1.3; rotation: -35; transformOrigin: Item.Left; color: "#a8c8e1"; opacity: 0.65 }
-        Rectangle { x: 1149; y: 704; width: 68; height: 1.3; rotation: 22; transformOrigin: Item.Left; color: "#a8c8e1"; opacity: 0.65 }
-        Rectangle { x: boat.x+205; y: boat.y+167; width: 41; height: 1.3; rotation: -26; transformOrigin: Item.Left; color: "#a8c8e1"; opacity: 0.65 }
         // Label sizes stay in screen pixels even as the art scales.
         SceneTag {
-            x: 646; y: 81; scale: 1/world.scale; transformOrigin: Item.TopLeft
+            objectName: "cpuSceneTag"
+            x: world.tagX(646, width); y: world.tagY(126); scale: 1/world.scale; transformOrigin: Item.TopLeft
             text: "CPU"; accent: "#ff955e"; value: island.cpuLoad < 0 ? "—" : island.cpuLoad.toFixed(0)+"%"
             active: volcanoButton.hovered; onClicked: island.volcanoClicked()
         }
         SceneTag {
             id: ramTag
-            x: Math.min(1205,(island.width-width-12-(island.width-world.width*world.scale)/2)/world.scale)
-            y: 708; scale: 1/world.scale; transformOrigin: Item.TopLeft
+            objectName: "ramSceneTag"
+            x: world.tagX(1170, width)
+            y: world.tagY(776); scale: 1/world.scale; transformOrigin: Item.TopLeft
             text: "RAM"; accent: "#58b9ff"; value: island.ramRatio < 0 ? "—" : (island.ramRatio*100).toFixed(0)+"%"
             active: portButton.hovered; onClicked: island.portClicked()
         }
         SceneTag {
-            x: boat.x+237; y: boat.y+133; scale: 1/world.scale; transformOrigin: Item.TopLeft
+            objectName: "networkSceneTag"
+            x: world.tagX(boat.x+215, width); y: world.tagY(boat.y+143); scale: 1/world.scale; transformOrigin: Item.TopLeft
             text: "Network"; accent: "#39ddb8"
             onClicked: island.networkClicked()
         }
@@ -244,26 +218,6 @@ Item {
     Rectangle {
         anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: 48
         gradient: Gradient { GradientStop { position: 0; color: "transparent" } GradientStop { position: 1; color: "#b3051120" } }
-    }
-    component ShoreExtension: Item {
-        property bool rightEdge: false
-        width: 64; height: 1000
-        clip: true
-        // Reflect a narrow strip of the existing sea at its exact boundary.
-        // These share the original image textures: no resized or recompressed assets.
-        Image {
-            x: parent.rightEdge ? 0 : 64-1600
-            width: 1600; height: 1000
-            source: dayArt.source
-            mirror: true; smooth: true; mipmap: true
-        }
-        Image {
-            x: parent.rightEdge ? 0 : 64-1600
-            width: 1600; height: 1000
-            source: nightArt.source
-            opacity: nightArt.opacity
-            mirror: true; smooth: true; mipmap: true
-        }
     }
     component SceneTag: Button {
         id: tag

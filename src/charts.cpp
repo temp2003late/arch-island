@@ -1,4 +1,5 @@
 #include "charts.h"
+#include "sailboat.h"
 #include "history.h"
 #include <QPainter>
 #include <QPainterPath>
@@ -82,6 +83,7 @@ void GaugeArc::paint(QPainter *p) {
     }
 }
 void registerVisualTypes() {
+    qmlRegisterType<Sailboat>("ArchIsland",1,0,"Sailboat");
     qmlRegisterType<HistoryPlot>("ArchIsland",1,0,"HistoryPlot");
     qmlRegisterType<GaugeArc>("ArchIsland",1,0,"GaugeArc");
 }

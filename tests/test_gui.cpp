@@ -5,11 +5,79 @@
 #include <QQuickWindow>
 #include <QQuickItem>
 #include <QQuickStyle>
+#include <QPainter>
+#include "sailboat.h"
 #include "monitor.h"
 #include "charts.h"
 class GuiTest : public QObject {
     Q_OBJECT
 private slots:
+    void boatVisibleThroughTurn() {
+        Sailboat boat;
+        boat.setSize(QSizeF(190,190));
+        boat.setDarkness(1);
+        QImage sheet(760,380,QImage::Format_ARGB32_Premultiplied);
+        sheet.fill(QColor("#0c2840"));
+        for (int degrees=0; degrees<360; degrees+=5) {
+            boat.setHeading(degrees);
+            QImage frame(190,190,QImage::Format_ARGB32_Premultiplied);
+            frame.fill(Qt::transparent);
+            { QPainter painter(&frame); boat.paint(&painter); }
+            int solid=0, left=190, right=0, top=190, bottom=0;
+            for (int y=0;y<190;++y) for (int x=0;x<190;++x) {
+                if(qAlpha(frame.pixel(x,y))<128) continue;
+                ++solid;
+                left=std::min(left,x); right=std::max(right,x);
+                top=std::min(top,y); bottom=std::max(bottom,y);
+            }
+            QVERIFY2(solid>450, qPrintable(QString("Boat vanished at %1 degrees: %2 pixels").arg(degrees).arg(solid)));
+            QVERIFY(right-left>24);
+            QVERIFY(bottom-top>90);
+            QVERIFY(left>0 && right<189 && top>0 && bottom<189);
+            if (degrees%45==0) {
+                int tile=degrees/45;
+                QPainter painter(&sheet);
+                painter.drawImage((tile%4)*190,(tile/4)*190,frame);
+                painter.setPen(Qt::white);
+                painter.drawText((tile%4)*190+8,(tile/4)*190+16,QString::number(degrees)+QChar(0x00b0));
+            }
+        }
+        const auto output=qEnvironmentVariable("ARCH_ISLAND_SCREENSHOTS");
+        if(!output.isEmpty()) QVERIFY(sheet.save(output+"/boat-turns.png"));
+    }
+    void framing() {
+        QQmlEngine engine;
+        QQmlComponent component(&engine, QUrl("qrc:/qml/Island.qml"));
+        QScopedPointer<QObject> object(component.create());
+        QVERIFY2(object, qPrintable(component.errorString()));
+        auto *scene = qobject_cast<QQuickItem *>(object.data());
+        QVERIFY(scene);
+        scene->setProperty("animate", false);
+        for (const QSize size : {QSize(525, 510), QSize(1547, 831), QSize(2400, 900)}) {
+            scene->setSize(size);
+            for (const auto *name : {"dayArtwork", "nightArtwork"}) {
+                auto *art = scene->findChild<QQuickItem *>(name);
+                QVERIFY(art);
+                const auto frame = art->mapRectToItem(scene, art->boundingRect());
+                QVERIFY(frame.left() <= 0.01 && frame.top() <= 0.01);
+                QVERIFY(frame.right() >= size.width()-0.01);
+                QVERIFY(frame.bottom() >= size.height()-0.01);
+                if (size.width() >= 1500 && QByteArray(name) == "nightArtwork")
+                    QVERIFY(art->mapToItem(scene, QPointF(1540, 102)).y() >= 20);
+            }
+            for (int step = 0; step < 24; ++step) {
+                scene->setProperty("sailingPhase", step * 3.141592653589793 / 12);
+                for (const auto *name : {"cpuSceneTag", "ramSceneTag", "networkSceneTag"}) {
+                    auto *tag = scene->findChild<QQuickItem *>(name);
+                    QVERIFY(tag);
+                    const auto bounds = tag->mapRectToItem(scene, tag->boundingRect());
+                    QVERIFY(bounds.left() >= 11.9 && bounds.top() >= 11.9);
+                    QVERIFY(bounds.right() <= size.width()-11.9);
+                    QVERIFY(bounds.bottom() <= size.height()-11.9);
+                }
+            }
+        }
+    }
     void continuousSailing() {
         QQmlEngine engine;
         QQmlComponent component(&engine, QUrl("qrc:/qml/Island.qml"));
@@ -20,6 +88,10 @@ private slots:
         scene->setProperty("height", 830);
         auto *boat = scene->findChild<QQuickItem *>("sailingBoat");
         QVERIFY(boat);
+        auto *art = scene->findChild<QQuickItem *>("nightArtwork");
+        QVERIFY(art);
+        // Moon's upper edge must have sky above it in the landscape viewport.
+        QVERIFY(art->mapToItem(qobject_cast<QQuickItem *>(scene.data()), QPointF(1540, 102)).y() >= 20);
         QPointF previous = boat->position();
         // Several full circuits, including idle, bursts and unavailable metrics.
         for (int i = 0; i < 7200; ++i) {
@@ -31,6 +103,9 @@ private slots:
             QVERIFY(position.x() >= 165 && position.x() <= 495);
             const auto routeY = boat->property("routeCenterY").toDouble();
             QVERIFY(position.y() > routeY - 36 && position.y() < routeY + 36);
+            const auto bottom = boat->mapToItem(qobject_cast<QQuickItem *>(scene.data()),
+                                                QPointF(boat->width()/2, boat->height())).y();
+            QVERIFY(bottom <= 830 - 70);
             previous = position;
         }
         const auto time = scene->property("sceneTime").toDouble();
@@ -77,6 +152,29 @@ private slots:
         const int previewWait = qEnvironmentVariableIntValue("ARCH_ISLAND_PREVIEW_WAIT_MS");
         if (previewWait > 0 && previewWait <= 65000) QTest::qWait(previewWait);
         if (!screenshotDir.isEmpty()) QVERIFY(window->grabWindow().save(screenshotDir + "/island.png"));
+        if (window->rendererInterface()->graphicsApi() != QSGRendererInterface::Software) {
+            // Verify rendered town pixels change, not just the animation clock.
+            auto *art = window->findChild<QQuickItem *>("nightArtwork");
+            QVERIFY(art);
+            const qreal dpr = window->devicePixelRatio();
+            const QRect town = QRectF(art->mapToScene(QPointF(650, 340))*dpr,
+                                      art->mapToScene(QPointF(1000, 500))*dpr).toAlignedRect();
+            scene->setProperty("animate", false);
+            QTest::qWait(100);
+            const QImage before = window->grabWindow().copy(town);
+            QVERIFY(!before.isNull());
+            QVERIFY(QMetaObject::invokeMethod(scene, "advanceScene", Q_ARG(QVariant, 2.0)));
+            QTest::qWait(100);
+            const QImage after = window->grabWindow().copy(town);
+            QVERIFY(before != after);
+            QTest::qWait(120);
+            QCOMPARE(window->grabWindow().copy(town), after);
+            if (!screenshotDir.isEmpty()) {
+                QVERIFY(before.save(screenshotDir + "/town-before.png"));
+                QVERIFY(after.save(screenshotDir + "/town-after.png"));
+            }
+            scene->setProperty("animate", true);
+        }
         auto *volcano = window->findChild<QQuickItem *>("volcanoButton");
         QVERIFY(volcano);
         QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
@@ -105,7 +203,10 @@ private slots:
         QTest::qWait(200);
         if (!screenshotDir.isEmpty()) QVERIFY(window->grabWindow().save(screenshotDir + "/settings.png"));
         QVERIFY(QMetaObject::invokeMethod(dialog,"close"));
-        QTest::qWait(400);
+        auto *dayTransition = window->findChild<QQuickItem *>("nightArtwork");
+        QVERIFY(dayTransition);
+        QTRY_VERIFY(dayTransition->opacity() < 0.001);
+        if (!screenshotDir.isEmpty()) QVERIFY(window->grabWindow().save(screenshotDir + "/day.png"));
         settings.setReducedMotion(false);
         window->resize(800,640); QTest::qWait(200);
         QVERIFY(scene->width() > 0 && scene->height() > 0);
