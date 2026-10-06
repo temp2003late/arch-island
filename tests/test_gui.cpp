@@ -10,6 +10,38 @@
 class GuiTest : public QObject {
     Q_OBJECT
 private slots:
+    void continuousSailing() {
+        QQmlEngine engine;
+        QQmlComponent component(&engine, QUrl("qrc:/qml/Island.qml"));
+        QScopedPointer<QObject> scene(component.create());
+        QVERIFY2(scene, qPrintable(component.errorString()));
+        scene->setProperty("animate", false);
+        scene->setProperty("width", 1500);
+        scene->setProperty("height", 830);
+        auto *boat = scene->findChild<QQuickItem *>("sailingBoat");
+        QVERIFY(boat);
+        QPointF previous = boat->position();
+        // Several full circuits, including idle, bursts and unavailable metrics.
+        for (int i = 0; i < 7200; ++i) {
+            if (i % 300 == 0)
+                scene->setProperty("traffic", i % 900 == 0 ? -1.0 : i % 600 == 0 ? 0.0 : 1e9);
+            QVERIFY(QMetaObject::invokeMethod(scene.data(), "advanceScene", Q_ARG(QVariant, 0.1)));
+            const auto position = boat->position();
+            QVERIFY(QLineF(previous, position).length() < 1.0);
+            QVERIFY(position.x() >= 165 && position.x() <= 495);
+            const auto routeY = boat->property("routeCenterY").toDouble();
+            QVERIFY(position.y() > routeY - 36 && position.y() < routeY + 36);
+            previous = position;
+        }
+        const auto time = scene->property("sceneTime").toDouble();
+        QTest::qWait(120);
+        QCOMPARE(scene->property("sceneTime").toDouble(), time);
+        QCOMPARE(boat->position(), previous);
+        scene->setProperty("animate", true);
+        QTest::qWait(120);
+        QVERIFY(scene->property("sceneTime").toDouble() > time);
+        QVERIFY(QLineF(previous, boat->position()).length() < 2.0);
+    }
     void islandInteraction() {
         QTemporaryDir dir;
         Settings settings(dir.filePath("settings.ini"));
@@ -36,6 +68,12 @@ private slots:
         QCOMPARE(monitor.cpuHistory().last().toDouble(),monitor.cpu());
         QTest::qWait(200);
         const auto screenshotDir = qEnvironmentVariable("ARCH_ISLAND_SCREENSHOTS");
+        const int previewWidth = qEnvironmentVariableIntValue("ARCH_ISLAND_PREVIEW_WIDTH");
+        const int previewHeight = qEnvironmentVariableIntValue("ARCH_ISLAND_PREVIEW_HEIGHT");
+        if (previewWidth >= 800 && previewHeight >= 640) {
+            window->resize(previewWidth, previewHeight);
+            QTest::qWait(200);
+        }
         const int previewWait = qEnvironmentVariableIntValue("ARCH_ISLAND_PREVIEW_WAIT_MS");
         if (previewWait > 0 && previewWait <= 65000) QTest::qWait(previewWait);
         if (!screenshotDir.isEmpty()) QVERIFY(window->grabWindow().save(screenshotDir + "/island.png"));
