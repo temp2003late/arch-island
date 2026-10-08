@@ -13,6 +13,7 @@ class GuiTest : public QObject {
     Q_OBJECT
 private slots:
     void boatVisibleThroughTurn() {
+        QTest::failOnWarning(QRegularExpression("^QColor::"));
         Sailboat boat;
         boat.setSize(QSizeF(190,190));
         boat.setDarkness(1);

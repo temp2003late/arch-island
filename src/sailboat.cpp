@@ -60,7 +60,8 @@ void Sailboat::paint(QPainter *p) {
     constexpr int stations=16, rows=5;
     auto hull = [](int station, int row, float side) {
         float t=float(station)/stations, level=float(row)/rows;
-        float beam=21*std::pow(std::sin(float(pi)*t),0.62f);
+        // Rounding at pi can make sine negative; a fractional power would yield NaN.
+        float beam=21*std::pow(std::max(0.f,std::sin(float(pi)*t)),0.62f);
         float rim=4+5*std::pow(2*t-1,4);
         return V(-78+156*t, rim-24*level, side*beam*std::cos(level*float(pi)*0.47f));
     };
