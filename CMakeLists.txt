@@ -10,7 +10,7 @@ add_library(island-core STATIC src/metrics.cpp src/metrics.h src/settings.cpp sr
 target_include_directories(island-core PUBLIC src)
 target_link_libraries(island-core PUBLIC Qt6::Core Qt6::Concurrent)
 target_compile_options(island-core PRIVATE -Wall -Wextra -Wpedantic)
-add_library(island-visuals STATIC src/charts.cpp src/charts.h src/sailboat.cpp src/sailboat.h)
+add_library(island-visuals STATIC src/charts.cpp src/charts.h src/sailboat.cpp src/sailboat.h src/worldlife.cpp src/worldlife.h)
 target_include_directories(island-visuals PUBLIC src)
 target_link_libraries(island-visuals PUBLIC Qt6::Quick Qt6::Qml)
 target_compile_options(island-visuals PRIVATE -Wall -Wextra -Wpedantic)

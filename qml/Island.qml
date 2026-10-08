@@ -15,6 +15,11 @@ Item {
     property real sceneTime: 0
     property real sailingPhase: 0.7
     property real sailingSpeed: 0.025
+    property real lookX: animate && gaze.hovered ? Math.max(-1, Math.min(1, gaze.point.position.x / Math.max(1, width) * 2 - 1)) : 0
+    property real lookY: animate && gaze.hovered ? Math.max(-1, Math.min(1, gaze.point.position.y / Math.max(1, height) * 2 - 1)) : 0
+    Behavior on lookX { NumberAnimation { duration: island.animate ? 900 : 0; easing.type: Easing.OutCubic } }
+    Behavior on lookY { NumberAnimation { duration: island.animate ? 900 : 0; easing.type: Easing.OutCubic } }
+    HoverHandler { id: gaze }
     function advanceScene(dt) {
         const target = 0.025 + Math.min(0.02, Math.log(1 + Math.max(0, traffic) / 4096) * 0.003)
         sailingSpeed += (target - sailingSpeed) * (1 - Math.exp(-dt / 4))
@@ -71,6 +76,9 @@ Item {
             layer.effect: ShaderEffect {
                 property real sceneTime: island.sceneTime
                 property real darkness: 0
+                property real heat: island.heat
+                property real lookX: island.lookX
+                property real lookY: island.lookY
                 fragmentShader: "qrc:/assets/shaders/living.frag.qsb"
             }
         }
@@ -85,9 +93,18 @@ Item {
             layer.effect: ShaderEffect {
                 property real sceneTime: island.sceneTime
                 property real darkness: 1
+                property real heat: island.heat
+                property real lookX: island.lookX
+                property real lookY: island.lookY
                 fragmentShader: "qrc:/assets/shaders/living.frag.qsb"
             }
             Behavior on opacity { NumberAnimation { duration: island.animate ? 1000 : 0; easing.type: Easing.InOutSine } }
+        }
+        WorldLife {
+            objectName: "worldLife"
+            width: 1600; height: 1000
+            sceneTime: island.sceneTime
+            darkness: nightArt.opacity
         }
         // Soft atmospheric layers share the same clock as the sea and town.
         Image {

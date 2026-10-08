@@ -171,6 +171,20 @@ void Sailboat::paint(QPainter *p) {
         projected.push_back(std::move(out));
     }
     std::stable_sort(projected.begin(),projected.end(),[](const auto &a,const auto &b){ return a.depth<b.depth; });
+    // Flattened reflection sits on the water beneath the hull, before the boat.
+    p->save();
+    p->setClipRect(QRectF(0,150,190,40));
+    p->translate(0,150);
+    p->scale(1,-.18);
+    p->translate(0,-150);
+    p->setPen(Qt::NoPen);
+    for (const auto &f : projected) {
+        if (f.polygon.size()<3 || f.stroke>0) continue;
+        QColor reflection=f.color;
+        reflection.setAlphaF(f.luminous ? .18 : .065);
+        p->setBrush(reflection); p->drawPolygon(f.polygon);
+    }
+    p->restore();
     for (const auto &f : projected) {
         if (f.polygon.size()==1) {
             QPointF center=f.polygon.first();

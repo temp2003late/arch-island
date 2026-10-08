@@ -6,12 +6,36 @@
 #include <QQuickItem>
 #include <QQuickStyle>
 #include <QPainter>
+#include <limits>
 #include "sailboat.h"
 #include "monitor.h"
 #include "charts.h"
+#include "worldlife.h"
 class GuiTest : public QObject {
     Q_OBJECT
 private slots:
+    void worldLifeAnimation() {
+        QTest::failOnWarning(QRegularExpression("^(QColor|QPainter)::"));
+        WorldLife life;
+        life.setSize(QSizeF(1600,1000));
+        auto frame = [&life] {
+            QImage image(1600,1000,QImage::Format_ARGB32_Premultiplied);
+            image.fill(Qt::transparent);
+            QPainter painter(&image);
+            life.paint(&painter);
+            return image;
+        };
+        const auto day = frame();
+        life.setSceneTime(3.0);
+        const auto later = frame();
+        QVERIFY(day != later);
+        QVERIFY(day.copy(400,380,800,330) != later.copy(400,380,800,330));
+        QCOMPARE(frame(), later);
+        life.setDarkness(1);
+        QVERIFY(frame() != later);
+        life.setSceneTime(std::numeric_limits<double>::quiet_NaN());
+        QCOMPARE(life.sceneTime(),3.0);
+    }
     void boatVisibleThroughTurn() {
         QTest::failOnWarning(QRegularExpression("^QColor::"));
         Sailboat boat;
@@ -89,6 +113,8 @@ private slots:
         scene->setProperty("height", 830);
         auto *boat = scene->findChild<QQuickItem *>("sailingBoat");
         QVERIFY(boat);
+        auto *life = scene->findChild<WorldLife *>("worldLife");
+        QVERIFY(life);
         auto *art = scene->findChild<QQuickItem *>("nightArtwork");
         QVERIFY(art);
         // Moon's upper edge must have sky above it in the landscape viewport.
@@ -110,8 +136,10 @@ private slots:
             previous = position;
         }
         const auto time = scene->property("sceneTime").toDouble();
+        QCOMPARE(life->sceneTime(),time);
         QTest::qWait(120);
         QCOMPARE(scene->property("sceneTime").toDouble(), time);
+        QCOMPARE(life->sceneTime(),time);
         QCOMPARE(boat->position(), previous);
         scene->setProperty("animate", true);
         QTest::qWait(120);
