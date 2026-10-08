@@ -2,7 +2,9 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QRadialGradient>
+#include <QLineF>
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace {
@@ -18,18 +20,50 @@ void glow(QPainter *p, QPointF point, double radius, QColor color) {
     p->drawEllipse(point, radius, radius * .65);
 }
 struct Route { QPointF a, b, c; };
-// Routes follow the beach, plaza, upper terrace and wooden pier in artwork coordinates.
-const Route routes[] = {
-    {{404,548},{484,565},{579,591}},
-    {{700,493},{745,508},{822,535}},
-    {{825,538},{887,553},{935,550}},
-    {{961,651},{1066,669},{1182,682}},
-    {{636,406},{659,442},{695,476}},
-    {{930,384},{1034,373},{1130,376}}
-};
-QPointF along(const Route &r, double t) {
-    return r.a * ((1-t)*(1-t)) + r.b * (2*t*(1-t)) + r.c * (t*t);
+// Foot positions traced on the panorama at its QML size (2000x1000, x=-200).
+// Piecewise straight segments preserve bends and stair landings. Never add a
+// lateral offset: narrow stairs/bridges have no room for decorative wandering.
+const std::array<QPolygonF,6> residentRoutes = {{
+    // Western stairway, including the turn on the landing.
+    {{502,488},{510,476},{520,460},{525,450},{541,452},{548,439},{550,417},{551,398},{548,386}},
+    // Central street, around the church and down to the lower square.
+    {{704,475},{713,492},{724,501},{747,505},{770,502},{795,501},{808,507},{832,521},{850,534},{860,545}},
+    // Lower promenade and its stone bridge.
+    {{867,546},{882,548},{915,550},{949,548},{976,540},{1005,531},{1037,528},{1070,525}},
+    // Clear strip of the main dock, inside the bend and away from stacked cargo.
+    {{991,672},{1027,668},{1061,660},{1100,650}},
+    // Outer dock: follow the actual decking, not a diagonal over the bay.
+    {{1190,668},{1223,674},{1252,680},{1270,684}},
+    // Upper stone bridge; stop before the lighthouse buildings.
+    {{980,386},{1000,385},{1020,382},{1040,379},{1060,377}}
+}};
+const auto routeLengths = [] {
+    std::array<double,6> lengths{};
+    for (size_t route=0; route<residentRoutes.size(); ++route)
+        for (qsizetype i=1; i<residentRoutes[route].size(); ++i)
+            lengths[route] += QLineF(residentRoutes[route][i-1],residentRoutes[route][i]).length();
+    return lengths;
+}();
+double residentProgress(int resident, double time) {
+    const double phase = cycle(time/(48+resident*2.7)+resident*.381966);
+    return std::clamp((1-std::cos(phase*2*pi))*.57-.07,0.0,1.0);
 }
+QPointF alongStreet(int route, double progress) {
+    const auto &points = residentRoutes[route];
+    double remaining = progress*routeLengths[route];
+    for (qsizetype i=1; i<points.size(); ++i) {
+        const double length = QLineF(points[i-1],points[i]).length();
+        if (remaining <= length)
+            return points[i-1]+(points[i]-points[i-1])*(remaining/length);
+        remaining -= length;
+    }
+    return points.last();
+}
+}
+
+QPointF WorldLife::residentPosition(int resident, double sceneTime) {
+    if (resident<0 || resident>=ResidentCount || !std::isfinite(sceneTime)) return {};
+    return alongStreet(resident%int(residentRoutes.size()),residentProgress(resident,sceneTime));
 }
 
 WorldLife::WorldLife(QQuickItem *parent) : QQuickPaintedItem(parent) {
@@ -134,12 +168,9 @@ void WorldLife::paint(QPainter *p) {
     }
 
     // Residents walk, pause, then return instead of teleporting at route ends.
-    for (int i=0; i<18; ++i) {
-        const Route &route = routes[i%6];
-        const double phase = cycle(t/(48+i*2.7)+i*.381966);
-        const double distance = std::clamp((1-std::cos(phase*2*pi))*.57-.07,0.0,1.0);
-        QPointF point = along(route,distance);
-        point += QPointF((i/6-1)*4,(i/6-1)*2);
+    for (int i=0; i<ResidentCount; ++i) {
+        const double distance = residentProgress(i,t);
+        const QPointF point = residentPosition(i,t);
         const double size = i%6 == 5 ? .65 : i%6 == 3 ? 1.1 : .85;
         const double stride = distance>0 && distance<1 ? std::sin(t*5+i)*1.1 : 0;
         p->save(); p->translate(point); p->scale(size,size);

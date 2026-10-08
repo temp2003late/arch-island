@@ -2,6 +2,7 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQmlExpression>
 #include <QQuickWindow>
 #include <QQuickItem>
 #include <QQuickStyle>
@@ -14,6 +15,38 @@
 class GuiTest : public QObject {
     Q_OBJECT
 private slots:
+    void residentsStayOnWalkways() {
+        // Independently traced pavement/deck boundaries in panorama world space.
+        // These are wider areas, not curves generated from the renderer's routes.
+        const QPolygonF walkable[] = {
+            {{498,498},{519,473},{534,460},{548,460},{557,439},{560,412},{560,394},
+             {554,378},{540,378},{541,402},{539,421},{538,442},{520,442},{508,460},{494,482}},
+            {{697,470},{707,468},{720,488},{729,493},{755,496},{791,493},{809,499},
+             {840,517},{856,529},{868,546},{853,551},{841,538},{824,528},{801,515},
+             {786,510},{748,514},{718,508},{707,497}},
+            {{860,539},{880,540},{914,539},{949,539},{972,531},{997,523},{1034,519},
+             {1074,516},{1074,532},{1040,536},{1010,540},{980,551},{951,559},
+             {917,561},{879,558},{860,553}},
+            {{980,665},{1024,659},{1059,651},{1098,642},{1109,643},{1109,656},
+             {1065,670},{1030,678},{980,683}},
+            {{1184,660},{1224,665},{1258,673},{1277,677},{1277,691},{1251,690},
+             {1220,684},{1184,676}},
+            {{974,379},{1000,376},{1020,373},{1040,371},{1068,370},{1068,385},
+             {1040,389},{1020,394},{1000,398},{974,398}}
+        };
+        // Cover many return trips for every resident, not just the initial frame.
+        for (int resident=0; resident<WorldLife::ResidentCount; ++resident) {
+            auto previous = WorldLife::residentPosition(resident,0);
+            for (int step=0; step<6000; ++step) {
+                const auto point = WorldLife::residentPosition(resident,step*.1);
+                QVERIFY2(walkable[resident%6].containsPoint(point,Qt::OddEvenFill),
+                         qPrintable(QString("Resident %1 left the walkway at %2s: (%3, %4)")
+                                    .arg(resident).arg(step*.1).arg(point.x()).arg(point.y())));
+                QVERIFY(QLineF(previous,point).length()<2);
+                previous = point;
+            }
+        }
+    }
     void worldLifeAnimation() {
         QTest::failOnWarning(QRegularExpression("^(QColor|QPainter)::"));
         WorldLife life;
@@ -188,7 +221,12 @@ private slots:
             const qreal dpr = window->devicePixelRatio();
             const QRect town = QRectF(art->mapToScene(QPointF(650, 340))*dpr,
                                       art->mapToScene(QPointF(1000, 500))*dpr).toAlignedRect();
-            scene->setProperty("animate", false);
+            // Isolate the animation clock from live CPU samples: the lava's heat
+            // changes with telemetry even while decorative motion is paused.
+            scene->setProperty("animate",false);
+            QQmlExpression freeze(engine.rootContext(),scene,"cpuLoad = 50");
+            freeze.evaluate();
+            QVERIFY2(!freeze.hasError(),qPrintable(freeze.error().toString()));
             QTest::qWait(100);
             const QImage before = window->grabWindow().copy(town);
             QVERIFY(!before.isNull());
@@ -203,6 +241,10 @@ private slots:
                 QVERIFY(after.save(screenshotDir + "/town-after.png"));
             }
             scene->setProperty("animate", true);
+            QQmlExpression restore(engine.rootContext(),scene,
+                                  "cpuLoad = Qt.binding(function() { return monitor.cpu; })");
+            restore.evaluate();
+            QVERIFY2(!restore.hasError(),qPrintable(restore.error().toString()));
         }
         auto *volcano = window->findChild<QQuickItem *>("volcanoButton");
         QVERIFY(volcano);

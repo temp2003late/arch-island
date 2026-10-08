@@ -12,6 +12,8 @@ public:
     double darkness() const { return m_darkness; }
     void setSceneTime(double value);
     void setDarkness(double value);
+    static constexpr int ResidentCount = 18;
+    static QPointF residentPosition(int resident, double sceneTime);
     void paint(QPainter *painter) override;
 signals:
     void changed();
