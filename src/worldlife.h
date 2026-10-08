@@ -1,5 +1,6 @@
 #pragma once
 #include <QQuickPaintedItem>
+#include <QImage>
 
 // Small inhabitants and atmosphere, sharing the island's pausable clock.
 class WorldLife : public QQuickPaintedItem {
@@ -19,5 +20,8 @@ signals:
     void changed();
 private:
     double m_time = 0;
+    double m_lastRepaint = -1000;
     double m_darkness = 0;
+    bool waterAt(QPointF point, double margin = 0) const;
+    QImage m_waterMask;
 };

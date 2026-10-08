@@ -11,30 +11,19 @@ Item {
     property bool artworkReady: nightArt.status === Image.Ready && dayArt.status === Image.Ready
     property real heat: cpuLoad < 0 ? 0 : Math.min(1, cpuLoad / 100)
     Behavior on heat { NumberAnimation { duration: island.animate ? 1400 : 0; easing.type: Easing.InOutSine } }
-    // One accumulated clock: pauses preserve position; telemetry never resets a route.
-    property real sceneTime: 0
+    // One prewarmed, monotonic simulation clock shared by every lighting mode.
+    property real sceneTime: 143.7
     property real sailingPhase: 0.7
     property real sailingSpeed: 0.025
-    property real lookX: animate && gaze.hovered ? Math.max(-1, Math.min(1, gaze.point.position.x / Math.max(1, width) * 2 - 1)) : 0
-    property real lookY: animate && gaze.hovered ? Math.max(-1, Math.min(1, gaze.point.position.y / Math.max(1, height) * 2 - 1)) : 0
-    Behavior on lookX { NumberAnimation { duration: island.animate ? 900 : 0; easing.type: Easing.OutCubic } }
-    Behavior on lookY { NumberAnimation { duration: island.animate ? 900 : 0; easing.type: Easing.OutCubic } }
-    HoverHandler { id: gaze }
     function advanceScene(dt) {
-        const target = 0.025 + Math.min(0.02, Math.log(1 + Math.max(0, traffic) / 4096) * 0.003)
-        sailingSpeed += (target - sailingSpeed) * (1 - Math.exp(-dt / 4))
+        if (!Number.isFinite(dt) || dt <= 0) return
+        // Kept as a continuous public phase for integrations; boats stay moored.
         sailingPhase += sailingSpeed * dt
         sceneTime += dt
     }
-    Timer {
-        interval: 33; repeat: true; running: island.animate
-        property double previous: 0
-        onRunningChanged: previous = Date.now()
-        onTriggered: {
-            const now = Date.now()
-            island.advanceScene(Math.max(0, Math.min(0.1, (now - previous) / 1000)))
-            previous = now
-        }
+    SceneClock {
+        running: island.animate
+        onStepped: seconds => island.advanceScene(seconds)
     }
     signal volcanoClicked()
     signal portClicked()
@@ -67,20 +56,17 @@ Item {
             return Math.max(top + 12/scale, Math.min(preferred, top + (island.height-42)/scale))
         }
         Image {
+            id: sceneMask
+            source: "qrc:/assets/art/scene-mask.png"
+            visible: false; smooth: true
+        }
+        Image {
             id: dayArt
             objectName: "dayArtwork"
             x: -200; y: 0; width: 2000; height: 1000
             source: "qrc:/assets/art/island-day-wide.png"
             smooth: true; mipmap: true
-            layer.enabled: GraphicsInfo.api !== GraphicsInfo.Software
-            layer.effect: ShaderEffect {
-                property real sceneTime: island.sceneTime
-                property real darkness: 0
-                property real heat: island.heat
-                property real lookX: island.lookX
-                property real lookY: island.lookY
-                fragmentShader: "qrc:/assets/shaders/living.frag.qsb"
-            }
+            visible: GraphicsInfo.api === GraphicsInfo.Software
         }
         Image {
             id: nightArt
@@ -89,77 +75,86 @@ Item {
             source: "qrc:/assets/art/island-night-wide.png"
             opacity: island.night ? 1 : 0
             smooth: true; mipmap: true
-            layer.enabled: GraphicsInfo.api !== GraphicsInfo.Software
-            layer.effect: ShaderEffect {
-                property real sceneTime: island.sceneTime
-                property real darkness: 1
-                property real heat: island.heat
-                property real lookX: island.lookX
-                property real lookY: island.lookY
-                fragmentShader: "qrc:/assets/shaders/living.frag.qsb"
-            }
-            Behavior on opacity { NumberAnimation { duration: island.animate ? 1000 : 0; easing.type: Easing.InOutSine } }
+            visible: GraphicsInfo.api === GraphicsInfo.Software
+            Behavior on opacity { NumberAnimation { duration: 4000; easing.type: Easing.InOutSine } }
+        }
+        ShaderEffect {
+            objectName: "livingSurface"
+            x: -200; y: 0; width: 2000; height: 1000
+            visible: GraphicsInfo.api !== GraphicsInfo.Software
+            property var source: dayArt
+            property var nightSource: nightArt
+            property var maskSource: sceneMask
+            property real sceneTime: island.sceneTime
+            property real darkness: nightArt.opacity
+            property real heat: island.heat
+            fragmentShader: "qrc:/assets/shaders/living.frag.qsb"
         }
         WorldLife {
             objectName: "worldLife"
             width: 1600; height: 1000
             sceneTime: island.sceneTime
             darkness: nightArt.opacity
+            textureSize: Qt.size(Math.max(1, Math.min(1600, width*world.scale)), Math.max(1, Math.min(1000, height*world.scale)))
         }
-        // Soft atmospheric layers share the same clock as the sea and town.
+        // Irregular, analytically aged plumes are present on the first frame.
         Image {
-            x: 499; y: 101; width: 120; height: 120
-            source: "qrc:/assets/glow.svg"; sourceSize: Qt.size(240,240)
-            opacity: island.cpuLoad < 0 ? 0 : (0.16+island.heat*0.72) * (0.94 + 0.06*Math.sin(island.sceneTime*1.3))
-            Behavior on opacity { NumberAnimation { duration: island.animate ? 800 : 0 } }
+            x: 529; y: 142; width: 80; height: 50
+            source: "qrc:/assets/glow.svg"; sourceSize: Qt.size(160,100)
+            opacity: (0.07 + nightArt.opacity*0.11) * (0.91+0.06*Math.sin(island.sceneTime*.173)+0.03*Math.sin(island.sceneTime*.317))
         }
         Repeater {
-            model: 6
+            model: 13
             Image {
-                id: smoke
                 required property int index
-                property real phase: (island.sceneTime / 7 + index / 6) % 1
-                x: 536+phase*48+index*3; y: 126-phase*95
-                width: 48+phase*70; height: width
-                source: "qrc:/assets/smoke.svg"; sourceSize: Qt.size(128,128)
-                visible: island.cpuLoad >= 0
-                opacity: Math.sin(Math.PI*phase)*(0.10+island.heat*0.5)
-
+                property real lifetime: 13.1 + index*.731
+                property real phase: (island.sceneTime / lifetime + index*.61803398875) % 1
+                property real wind: .58*Math.sin(island.sceneTime*.173)+.27*Math.sin(island.sceneTime*.317+1.2)+.15*Math.sin(island.sceneTime*.071+2.4)
+                x: 538 + phase*(24+index*1.3) + wind*phase*12
+                y: 151 - phase*(80+index*2.7)
+                width: 30 + phase*(52+index*1.1); height: width*(.8+index%3*.11)
+                source: "qrc:/assets/smoke.svg"; sourceSize: Qt.size(96,96)
+                rotation: index*47 + phase*13
+                opacity: Math.pow(Math.sin(Math.PI*phase),2)*(.045+.025*(1-nightArt.opacity))
             }
         }
         Repeater {
-            model: 7
+            model: 5
             Rectangle {
-                id: ember
                 required property int index
-                property real phase: (island.sceneTime / (2.8 + index*0.18) + index/7) % 1
-                visible: island.cpuLoad > 30
-                x: 560+Math.sin(index*4.3)*phase*32
-                y: 170-phase*(35+island.heat*80)
-                width: 1.5+index%2; height: width; radius: width
-                color: "#ffb553"; opacity: Math.sin(Math.PI*phase)*island.heat
-
+                property real phase: (island.sceneTime / (7.7 + index*1.137) + index*.61803398875) % 1
+                x: 562 + Math.sin(index*4.3)*phase*16 + phase*8*Math.sin(island.sceneTime*.173)
+                y: 173-phase*(27+index*4)
+                width: 1.1+index%2*.4; height: width; radius: width
+                color: "#ffb553"
+                opacity: Math.pow(Math.sin(Math.PI*phase),3)*(.15+.28*nightArt.opacity)
             }
         }
+        // Beam points out to open water; negative projection is occluded by the
+        // tower/island. Its room rotates throughout daytime too.
         Image {
-            x: 1178; y: 220; width: 420; height: 118
-            source: "qrc:/assets/beam.svg"; sourceSize: Qt.size(840,236)
-            opacity: nightArt.opacity * (0.18 + 0.05*Math.sin(island.sceneTime*0.22 + 0.8))
+            x: 1178; y: 269; width: 340; height: 30
+            source: "qrc:/assets/beam.svg"; sourceSize: Qt.size(680,60)
+            property real azimuth: island.sceneTime*.137
+            opacity: (0.004+nightArt.opacity*.038)*Math.pow(Math.max(0,Math.cos(azimuth)),2)
             transformOrigin: Item.Left
-            rotation: -1 + 15 * Math.sin(island.sceneTime * 0.22)
-
+            scale: .25+.75*Math.abs(Math.cos(azimuth))
+            rotation: 4+9*Math.sin(azimuth)
+        }
+        Image {
+            x: 1169; y: 264; width: 21; height: 18
+            source: "qrc:/assets/glow.svg"
+            opacity: (.05+.14*nightArt.opacity)*(.65+.35*Math.cos(island.sceneTime*.137))
         }
         // Cargo is part of the painted harbor; RAM is shown by the tag and card.
         Item {
             id: boat
             objectName: "sailingBoat"
-            x: Math.max(330, (world.width-island.width/world.scale)/2 + 185) + Math.min(165, island.width/world.scale*0.13) * Math.cos(island.sailingPhase)
-            // Include the entire bobbing orbit plus a 72-screen-pixel water margin.
-            property real routeCenterY: Math.min(745, world.visibleTop + island.height/world.scale - height - 36 - 72/world.scale)
-            y: routeCenterY + 34 * Math.sin(island.sailingPhase) + 1.6 * Math.sin(island.sceneTime * 1.1)
+            x: Math.max(330, (world.width-island.width/world.scale)/2 + 20/world.scale) + 2.2*Math.sin(island.sceneTime*.219) + .7*Math.sin(island.sceneTime*.373+1.4)
+            property real routeCenterY: Math.min(720, world.visibleTop + island.height/world.scale - height - 70/world.scale)
+            y: routeCenterY + 1.3*Math.sin(island.sceneTime*.713) + .55*Math.sin(island.sceneTime*1.137+2.1)
             width: 190; height: 190
-            // Convert the screen-space tangent into yaw for the elevated 3D camera.
-            property real heading: Math.atan2(34 * Math.cos(island.sailingPhase) / Math.sin(24*Math.PI/180), -Math.min(165, island.width/world.scale*0.13) * Math.sin(island.sailingPhase)) * 180 / Math.PI
+            property real heading: -18 + .7*Math.sin(island.sceneTime*.173)
             Sailboat {
                 objectName: "sailboatArtwork"
                 anchors.fill: parent

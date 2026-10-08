@@ -12,9 +12,72 @@
 #include "monitor.h"
 #include "charts.h"
 #include "worldlife.h"
+#include "sceneclock.h"
 class GuiTest : public QObject {
     Q_OBJECT
 private slots:
+    void monotonicClockPauseAndStall() {
+        SceneClock clock;
+        QSignalSpy steps(&clock,&SceneClock::stepped);
+        clock.setRunning(true);
+        QTRY_VERIFY(steps.size()>=2);
+        QTest::qSleep(400); // Simulate a blocked render/event loop.
+        QCoreApplication::processEvents();
+        for (const auto &step:steps) {
+            QVERIFY(step[0].toDouble()>0);
+            QVERIFY(step[0].toDouble()<=.1);
+        }
+        clock.setRunning(false);
+        const auto count=steps.size();
+        QTest::qWait(140);
+        QCOMPARE(steps.size(),count);
+        clock.setRunning(true);
+        QTRY_VERIFY(steps.size()>count);
+        QVERIFY(steps.last()[0].toDouble()<.1);
+    }
+    void sharedMasksProtectArchitecture() {
+        const QImage mask(":/assets/art/scene-mask.png");
+        QCOMPARE(mask.size(),QSize(1774,887));
+        for (const QPoint point:{QPoint(1223,260),QPoint(831,371),QPoint(922,397),
+                                QPoint(1331,600),QPoint(752,604),QPoint(17,333),
+                                QPoint(1074,646),QPoint(1140,632),QPoint(1460,658)})
+            QCOMPARE(qRed(mask.pixel(point)),0);
+        for (const QPoint point:{QPoint(180,710),QPoint(1540,550),QPoint(400,730)})
+            QCOMPARE(qRed(mask.pixel(point)),255);
+        QVERIFY(qBlue(mask.pixel(680,173))>0);
+    }
+    void lightingTransitionKeepsState() {
+        QQmlEngine engine;
+        QQmlComponent component(&engine,QUrl("qrc:/qml/Island.qml"));
+        QScopedPointer<QObject> scene(component.create());
+        QVERIFY2(scene,qPrintable(component.errorString()));
+        scene->setProperty("animate",false);
+        scene->setProperty("width",1600);
+        scene->setProperty("height",1000);
+        auto *boat=scene->findChild<QQuickItem *>("sailingBoat");
+        auto *art=scene->findChild<QQuickItem *>("nightArtwork");
+        QVERIFY(boat && art);
+        const double time=scene->property("sceneTime").toDouble();
+        const QPointF position=boat->position();
+        scene->setProperty("night",true);
+        QTest::qWait(350);
+        QVERIFY(art->opacity()>0 && art->opacity()<.2);
+        const double current=art->opacity();
+        scene->setProperty("night",false);
+        QVERIFY(std::abs(art->opacity()-current)<.002);
+        scene->setProperty("cpuLoad",81);
+        scene->setProperty("traffic",1e8);
+        scene->setProperty("width",1800);
+        QTest::qWait(160);
+        QCOMPARE(scene->property("sceneTime").toDouble(),time);
+        QCOMPARE(boat->position(),position);
+        QTRY_VERIFY_WITH_TIMEOUT(art->opacity()<.001,5000);
+        // A long period of hidden/paused time has no accumulated physics debt.
+        scene->setProperty("animate",true);
+        QTest::qWait(110);
+        QVERIFY(scene->property("sceneTime").toDouble()>time);
+        QVERIFY(QLineF(position,boat->position()).length()<.5);
+    }
     void residentsStayOnWalkways() {
         // Independently traced pavement/deck boundaries in panorama world space.
         // These are wider areas, not curves generated from the renderer's routes.
@@ -228,12 +291,26 @@ private slots:
             freeze.evaluate();
             QVERIFY2(!freeze.hasError(),qPrintable(freeze.error().toString()));
             QTest::qWait(100);
-            const QImage before = window->grabWindow().copy(town);
+            const QImage fullBefore = window->grabWindow();
+            const QImage before = fullBefore.copy(town);
             QVERIFY(!before.isNull());
             QVERIFY(QMetaObject::invokeMethod(scene, "advanceScene", Q_ARG(QVariant, 2.0)));
             QTest::qWait(100);
-            const QImage after = window->grabWindow().copy(town);
+            const QImage fullAfter = window->grabWindow();
+            const QImage after = fullAfter.copy(town);
             QVERIFY(before != after);
+            const auto artworkRect=[&](QRectF native) {
+                const QPointF a(native.left()*2000/1774,native.top()*1000/887);
+                const QPointF b(native.right()*2000/1774,native.bottom()*1000/887);
+                return QRectF(art->mapToScene(a)*dpr,art->mapToScene(b)*dpr).toAlignedRect();
+            };
+            const QRect sea=artworkRect(QRectF(1000,780,90,48));
+            QVERIFY(fullBefore.rect().contains(sea));
+            QVERIFY(fullBefore.copy(sea)!=fullAfter.copy(sea));
+            // A solid roof stays pixel-identical while neighboring waves move.
+            const QRect roof=artworkRect(QRectF(810,365,8,4));
+            QVERIFY(fullBefore.rect().contains(roof));
+            QCOMPARE(fullBefore.copy(roof),fullAfter.copy(roof));
             QTest::qWait(120);
             QCOMPARE(window->grabWindow().copy(town), after);
             if (!screenshotDir.isEmpty()) {

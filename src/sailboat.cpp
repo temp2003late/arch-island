@@ -25,109 +25,129 @@ struct Projected {
 };
 }
 
+struct Sailboat::Mesh {
+    std::vector<Face> faces;
+    std::vector<Projected> projected;
+};
+Sailboat::~Sailboat() = default;
+
 Sailboat::Sailboat(QQuickItem *parent) : QQuickPaintedItem(parent) {
+    m_mesh = std::make_unique<Mesh>();
     setAntialiasing(true);
     setImplicitSize(190, 190);
 }
-void Sailboat::setHeading(double v) { if (std::isfinite(v) && m_heading != v) { m_heading=v; update(); emit changed(); } }
-void Sailboat::setSceneTime(double v) { if (std::isfinite(v) && m_time != v) { m_time=v; update(); emit changed(); } }
+void Sailboat::setHeading(double v) {
+    if (!std::isfinite(v) || m_heading==v) return;
+    const bool majorTurn=std::abs(m_heading-v)>.5;
+    m_heading=v;
+    if (majorTurn) update();
+    emit changed();
+}
+void Sailboat::setSceneTime(double v) {
+    if (!std::isfinite(v) || m_time==v) return;
+    m_time=v;
+    if (v<m_lastRepaint || v-m_lastRepaint>=1.0/15) { m_lastRepaint=v; update(); }
+    emit changed();
+}
 void Sailboat::setDarkness(double v) { if (std::isfinite(v) && m_darkness != v) { m_darkness=std::clamp(v,0.0,1.0); update(); emit changed(); } }
 
 void Sailboat::paint(QPainter *p) {
     if (width() <= 0 || height() <= 0) return;
-    std::vector<Face> faces;
-    faces.reserve(600);
-    auto face = [&](std::initializer_list<V> v, QColor c) { faces.push_back({v,c}); };
-    auto line = [&](V a, V b, QColor c, float w = 0.65f) { faces.push_back({{a,b},c,w}); };
-    auto box = [&](float x, float y, float z, float length, float tall, float wide, QColor color) {
-        V a(x,y,z), b(x+length,y,z), c(x+length,y,z+wide), d(x,y,z+wide);
-        V up(0,tall,0);
-        face({a,b,b+up,a+up},color); face({b,c,c+up,b+up},color);
-        face({c,d,d+up,c+up},color); face({d,a,a+up,d+up},color);
-        face({a+up,b+up,c+up,d+up},color.lighter(130));
-    };
-    auto spar = [&](V a, V b, float radius, QColor color) {
-        V axis=(b-a).normalized();
-        V u=V::crossProduct(axis,V(0,0,1)).normalized()*radius;
-        V v=V::crossProduct(axis,u).normalized()*radius;
-        for (int i=0;i<8;++i) {
-            double t0=i*pi/4, t1=(i+1)*pi/4;
-            V r0=u*std::cos(t0)+v*std::sin(t0), r1=u*std::cos(t1)+v*std::sin(t1);
-            face({a+r0,b+r0,b+r1,a+r1},color);
-        }
-    };
-    // Rounded cross sections give the hull real beam and depth, including at 90°.
-    constexpr int stations=16, rows=5;
-    auto hull = [](int station, int row, float side) {
-        float t=float(station)/stations, level=float(row)/rows;
-        // Rounding at pi can make sine negative; a fractional power would yield NaN.
-        float beam=21*std::pow(std::max(0.f,std::sin(float(pi)*t)),0.62f);
-        float rim=4+5*std::pow(2*t-1,4);
-        return V(-78+156*t, rim-24*level, side*beam*std::cos(level*float(pi)*0.47f));
-    };
-    for (float side : {-1.f,1.f}) {
-        for (int i=0;i<stations;++i) {
-            for (int r=0;r<rows;++r) {
-                QColor wood = QColor::fromRgb(112+r*5+(i%3)*3,57+r*2,29+r);
-                face({hull(i,r,side),hull(i+1,r,side),hull(i+1,r+1,side),hull(i,r+1,side)},wood);
-                line(hull(i,r,side),hull(i+1,r,side),r==0 ? QColor("#d5b177") : QColor("#513420"),r==0 ? 1.3f : .4f);
-            }
-            const V a=hull(i,0,side), b=hull(i+1,0,side);
-            line(a+V(0,8,0),b+V(0,8,0),QColor("#b99258"),.9f);
-            if (i%2 == 0) spar(a,a+V(0,8,0),.55,QColor("#9b713c"));
-            if (side < 0)
-                face({hull(i,0,-1),hull(i+1,0,-1),hull(i+1,0,1),hull(i,0,1)},QColor("#be945d"));
-        }
-    }
-    for (int i=1;i<stations;++i)
-        line(hull(i,0,-1)+V(0,.15,0),hull(i,0,1)+V(0,.15,0),QColor("#725132"),.4f);
-    box(-45,6,-11,28,12,22,QColor("#80512e"));
-    box(-48,18,-13,34,2,26,QColor("#b08148"));
-    // Warm windows on both cabin sides remain attached to its geometry.
-    for (float side : {-1.f,1.f}) for (int i=0;i<3;++i) {
-        float x=-40+i*8, z=side*11.1f;
-        faces.push_back({{V(x,10,z),V(x+4,10,z),V(x+4,15,z),V(x,15,z)},QColor("#ffc971"),0,true});
-    }
-    spar(V(0,4,0),V(0,144,0),1.65,QColor("#a56e34"));
-    spar(V(65,6,0),V(90,13,0),.9,QColor("#ac8047"));
-    spar(V(0,26,0),V(-69,28,4),1,QColor("#ac8047"));
-    auto sail = [&](V a, V b, V c, float phase) {
-        constexpr int divisions=10;
-        auto vertex = [&](float u,float v) {
-            V point=a*(1-u-v)+b*u+c*v;
-            float billow=std::sin(pi*u)*std::sin(pi*v)*std::sin(pi*(1-u-v));
-            point.setZ(point.z()+billow*(12+1.2*std::sin(m_time*1.1+phase+point.y()*.04)));
-            return point;
+    auto &faces = m_mesh->faces;
+    if (faces.empty()) {
+        faces.reserve(800);
+        auto face = [&](std::initializer_list<V> v, QColor c) { faces.push_back({v,c}); };
+        auto line = [&](V a, V b, QColor c, float w = 0.65f) { faces.push_back({{a,b},c,w}); };
+        auto box = [&](float x, float y, float z, float length, float tall, float wide, QColor color) {
+            V a(x,y,z), b(x+length,y,z), c(x+length,y,z+wide), d(x,y,z+wide);
+            V up(0,tall,0);
+            face({a,b,b+up,a+up},color); face({b,c,c+up,b+up},color);
+            face({c,d,d+up,c+up},color); face({d,a,a+up,d+up},color);
+            face({a+up,b+up,c+up,d+up},color.lighter(130));
         };
-        for (int i=0;i<divisions;++i) for (int j=0;j<divisions-i;++j) {
-            float u=float(i)/divisions, v=float(j)/divisions, step=1.f/divisions;
-            faces.push_back({{vertex(u,v),vertex(u+step,v),vertex(u,v+step)},QColor("#eedcb8"),0,false,true});
-            if (i+j<divisions-1)
-                faces.push_back({{vertex(u+step,v),vertex(u+step,v+step),vertex(u,v+step)},QColor("#eedcb8"),0,false,true});
-        }
-        for (int i=1;i<5;++i) {
-            float u=float(i)/5;
-            for (int j=0;j<8;++j) {
-                float v=(1-u)*j/8, next=(1-u)*(j+1)/8;
-                line(vertex(u,v),vertex(u,next),QColor("#bba785"),.35f);
+        auto spar = [&](V a, V b, float radius, QColor color) {
+            V axis=(b-a).normalized();
+            V u=V::crossProduct(axis,V(0,0,1)).normalized()*radius;
+            V v=V::crossProduct(axis,u).normalized()*radius;
+            for (int i=0;i<8;++i) {
+                double t0=i*pi/4, t1=(i+1)*pi/4;
+                V r0=u*std::cos(t0)+v*std::sin(t0), r1=u*std::cos(t1)+v*std::sin(t1);
+                face({a+r0,b+r0,b+r1,a+r1},color);
+            }
+        };
+        // Rounded cross sections give the hull real beam and depth, including at 90°.
+        constexpr int stations=16, rows=5;
+        auto hull = [](int station, int row, float side) {
+            float t=float(station)/stations, level=float(row)/rows;
+            // Rounding at pi can make sine negative; a fractional power would yield NaN.
+            float beam=21*std::pow(std::max(0.f,std::sin(float(pi)*t)),0.62f);
+            float rim=4+5*std::pow(2*t-1,4);
+            return V(-78+156*t, rim-24*level, side*beam*std::cos(level*float(pi)*0.47f));
+        };
+        for (float side : {-1.f,1.f}) {
+            for (int i=0;i<stations;++i) {
+                for (int r=0;r<rows;++r) {
+                    QColor wood = QColor::fromRgb(112+r*5+(i%3)*3,57+r*2,29+r);
+                    face({hull(i,r,side),hull(i+1,r,side),hull(i+1,r+1,side),hull(i,r+1,side)},wood);
+                    line(hull(i,r,side),hull(i+1,r,side),r==0 ? QColor("#d5b177") : QColor("#513420"),r==0 ? 1.3f : .4f);
+                }
+                const V a=hull(i,0,side), b=hull(i+1,0,side);
+                line(a+V(0,8,0),b+V(0,8,0),QColor("#b99258"),.9f);
+                if (i%2 == 0) spar(a,a+V(0,8,0),.55,QColor("#9b713c"));
+                if (side < 0)
+                    face({hull(i,0,-1),hull(i+1,0,-1),hull(i+1,0,1),hull(i,0,1)},QColor("#be945d"));
             }
         }
-        line(a,b,QColor("#aa9165")); line(b,c,QColor("#aa9165")); line(c,a,QColor("#aa9165"));
-    };
-    sail(V(-1,137,0),V(-68,28,4),V(-1,26,0),0);
-    sail(V(4,119,0),V(83,13,0),V(7,26,0),1.9);
-    for (float side : {-1.f,1.f}) {
-        line(V(0,138,0),V(-58,10,side*15),QColor("#806d4f"),.5);
-        line(V(0,120,0),V(22,6,side*19),QColor("#806d4f"),.5);
-        line(V(0,142,0),V(88,13,0),QColor("#8d7853"),.6);
-    }
-    for (float side : {-1.f,1.f}) {
-        spar(V(-58,9,side*15),V(-58,18,side*15),.5,QColor("#b78e44"));
-        faces.push_back({{V(-58,19,side*15)},QColor("#ffc977"),0,true});
-    }
+        for (int i=1;i<stations;++i)
+            line(hull(i,0,-1)+V(0,.15,0),hull(i,0,1)+V(0,.15,0),QColor("#725132"),.4f);
+        box(-45,6,-11,28,12,22,QColor("#80512e"));
+        box(-48,18,-13,34,2,26,QColor("#b08148"));
+        // Warm windows on both cabin sides remain attached to its geometry.
+        for (float side : {-1.f,1.f}) for (int i=0;i<3;++i) {
+            float x=-40+i*8, z=side*11.1f;
+            faces.push_back({{V(x,10,z),V(x+4,10,z),V(x+4,15,z),V(x,15,z)},QColor("#ffc971"),0,true});
+        }
+        spar(V(0,4,0),V(0,144,0),1.65,QColor("#a56e34"));
+        spar(V(65,6,0),V(90,13,0),.9,QColor("#ac8047"));
+        spar(V(0,26,0),V(-69,28,4),1,QColor("#ac8047"));
+        auto sail = [&](V a, V b, V c, float phase) {
+            constexpr int divisions=10;
+            auto vertex = [&](float u,float v) {
+                V point=a*(1-u-v)+b*u+c*v;
+                float billow=std::sin(pi*u)*std::sin(pi*v)*std::sin(pi*(1-u-v));
+                point.setZ(point.z()+billow*(12+1.2*std::sin(phase+point.y()*.04)));
+                return point;
+            };
+            for (int i=0;i<divisions;++i) for (int j=0;j<divisions-i;++j) {
+                float u=float(i)/divisions, v=float(j)/divisions, step=1.f/divisions;
+                faces.push_back({{vertex(u,v),vertex(u+step,v),vertex(u,v+step)},QColor("#eedcb8"),0,false,true});
+                if (i+j<divisions-1)
+                    faces.push_back({{vertex(u+step,v),vertex(u+step,v+step),vertex(u,v+step)},QColor("#eedcb8"),0,false,true});
+            }
+            for (int i=1;i<5;++i) {
+                float u=float(i)/5;
+                for (int j=0;j<8;++j) {
+                    float v=(1-u)*j/8, next=(1-u)*(j+1)/8;
+                    line(vertex(u,v),vertex(u,next),QColor("#bba785"),.35f);
+                }
+            }
+            line(a,b,QColor("#aa9165")); line(b,c,QColor("#aa9165")); line(c,a,QColor("#aa9165"));
+        };
+        sail(V(-1,137,0),V(-68,28,4),V(-1,26,0),0);
+        sail(V(4,119,0),V(83,13,0),V(7,26,0),1.9);
+        for (float side : {-1.f,1.f}) {
+            line(V(0,138,0),V(-58,10,side*15),QColor("#806d4f"),.5);
+            line(V(0,120,0),V(22,6,side*19),QColor("#806d4f"),.5);
+            line(V(0,142,0),V(88,13,0),QColor("#8d7853"),.6);
+        }
+        for (float side : {-1.f,1.f}) {
+            spar(V(-58,9,side*15),V(-58,18,side*15),.5,QColor("#b78e44"));
+            faces.push_back({{V(-58,19,side*15)},QColor("#ffc977"),0,true});
+        }
+    } // Retain the rigid mesh; only cloth and projection vary per frame.
     // Orthographic camera at 24 degrees above the water; yaw turns real vertices.
     const double yaw=m_heading*pi/180, elevation=24*pi/180;
-    const double roll=.012*std::sin(m_time*.8);
+    const double roll=.009*std::sin(m_time*.713)+.004*std::sin(m_time*1.137+2.1);
     auto rotate = [&](V v) {
         float y=v.y()*std::cos(roll)-v.z()*std::sin(roll);
         float z=v.y()*std::sin(roll)+v.z()*std::cos(roll);
@@ -148,15 +168,27 @@ void Sailboat::paint(QPainter *p) {
         }
         p->drawPolyline(wake);
     }
-    std::vector<Projected> projected;
-    projected.reserve(faces.size());
+    auto &projected = m_mesh->projected;
+    projected.resize(faces.size());
+    size_t faceIndex = 0;
     const V light=V(-.4,.8,.5).normalized();
+    const double wind=.58*std::sin(m_time*.173)+.27*std::sin(m_time*.317+1.2)+.15*std::sin(m_time*.071+2.4);
     for (const Face &f : faces) {
-        Projected out;
+        Projected &out=projected[faceIndex++];
+        out.depth=0;
+        out.polygon.resize(f.vertices.size());
+        int vertexIndex=0;
         out.color=f.color; out.stroke=f.stroke; out.luminous=f.luminous;
         for (V v : f.vertices) {
+            if (f.cloth) {
+                v.setZ(v.z()*(1+.065*wind+.02*std::sin(m_time*.91+v.y()*.04)));
+                // Free cloth edges flex; points on the mast retain x=0 and
+                // therefore remain attached. Rigid hull/spars never enter here.
+                v.setZ(v.z()+.6*std::sin(pi*std::clamp(std::abs(v.x())/83.,0.,1.))
+                       *(wind+.2*std::sin(m_time*.91+v.y()*.04)));
+            }
             v=rotate(v);
-            out.polygon << project(v);
+            out.polygon[vertexIndex++]=project(v);
             out.depth += v.z()*std::cos(elevation)+v.y()*std::sin(elevation);
         }
         out.depth /= f.vertices.size();
@@ -168,9 +200,8 @@ void Sailboat::paint(QPainter *p) {
             out.color.setGreenF(out.color.greenF()*shade);
             out.color.setBlueF(out.color.blueF()*shade);
         }
-        projected.push_back(std::move(out));
     }
-    std::stable_sort(projected.begin(),projected.end(),[](const auto &a,const auto &b){ return a.depth<b.depth; });
+    std::sort(projected.begin(),projected.end(),[](const auto &a,const auto &b){ return a.depth<b.depth; });
     // Flattened reflection sits on the water beneath the hull, before the boat.
     p->save();
     p->setClipRect(QRectF(0,150,190,40));

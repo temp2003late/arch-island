@@ -68,10 +68,28 @@ QPointF WorldLife::residentPosition(int resident, double sceneTime) {
 
 WorldLife::WorldLife(QQuickItem *parent) : QQuickPaintedItem(parent) {
     setAntialiasing(true);
+    m_waterMask=QImage(":/assets/art/scene-mask.png").convertToFormat(QImage::Format_RGB32);
+}
+bool WorldLife::waterAt(QPointF point, double margin) const {
+    for (int i=0;i<9;++i) {
+        const double angle=(i-1)*pi/4;
+        const QPointF sample=point+(i ? QPointF(std::cos(angle)*margin,std::sin(angle)*margin) : QPointF());
+        const int x=int((sample.x()+200)*1774/2000), y=int(sample.y()*887/1000);
+        if (x<0 || y<0 || x>=m_waterMask.width() || y>=m_waterMask.height()
+            || qRed(reinterpret_cast<const QRgb *>(m_waterMask.constScanLine(y))[x])<221) return false;
+        if (margin==0) break;
+    }
+    return true;
 }
 void WorldLife::setSceneTime(double value) {
     if (!std::isfinite(value) || value == m_time) return;
-    m_time = value; update(); emit changed();
+    m_time = value;
+    // Tiny inhabitants and low-contrast foam need fewer raster uploads than
+    // the GPU sea. Their analytic state still follows every clock step.
+    if (value<m_lastRepaint || value-m_lastRepaint>=1.0/12) {
+        m_lastRepaint=value; update();
+    }
+    emit changed();
 }
 void WorldLife::setDarkness(double value) {
     if (!std::isfinite(value)) return;
@@ -85,6 +103,7 @@ void WorldLife::paint(QPainter *p) {
     p->scale(width()/1600, height()/1000);
     p->setRenderHint(QPainter::Antialiasing);
     const double t = m_time, night = m_darkness;
+    const double wind=.58*std::sin(t*.173)+.27*std::sin(t*.317+1.2)+.15*std::sin(t*.071+2.4);
 
     // Perspective-compressed ripples in open water; no waves laid over the island.
     const QRectF water[] = {{-180,785,1900,205},{-170,450,270,310},
@@ -101,6 +120,7 @@ void WorldLife::paint(QPainter *p) {
             p->setBrush(Qt::NoBrush);
             QPainterPath ripple;
             const double span = (5+phase*26)*depth;
+            if (!waterAt(QPointF(x,y),span+3)) continue;
             ripple.moveTo(x-span,y);
             ripple.cubicTo(x-span*.4,y-2*depth,x+span*.4,y+2*depth,x+span,y);
             p->drawPath(ripple);
@@ -115,24 +135,43 @@ void WorldLife::paint(QPainter *p) {
         {{1268,543},{1330,525},{1370,558}}
     };
     for (int shore=0; shore<4; ++shore) for (int i=0; i<3; ++i) {
-        const double phase = cycle(t/(4.6+shore*.6)+i/3.0+shore*.23);
+        const double phase = cycle(t/(6.137+shore*.731+i*.193)+i*.381966+shore*.23);
         const double strength = std::sin(pi*phase) * (.5+.5*std::sin(pi*phase));
         const QPointF drift(phase*4,phase*8);
         const auto &r = shores[shore];
         QPainterPath breaker;
-        breaker.moveTo(r.a+drift);
-        breaker.quadTo(r.b+drift,r.c+drift);
-        p->setPen(QPen(QColor(158,218,230,int(strength*(night>0.5 ? 25 : 45))),4+phase*3));
+        bool connected=false;
+        for (int step=0;step<=48;++step) {
+            const double u=step/48.;
+            const QPointF point=r.a*((1-u)*(1-u))+r.b*(2*u*(1-u))+r.c*(u*u)+drift;
+            if (!waterAt(point,6)) { connected=false; continue; }
+            if (connected) breaker.lineTo(point);
+            else breaker.moveTo(point);
+            connected=true;
+        }
+        p->setPen(QPen(QColor(158,218,230,int(strength*(45-20*night))),4+phase*3));
         p->drawPath(breaker);
-        p->setPen(QPen(QColor(215,246,247,int(strength*(night>0.5 ? 70 : 110))),.8+phase*.7));
+        p->setPen(QPen(QColor(215,246,247,int(strength*(110-40*night))),.8+phase*.7));
         p->drawPath(breaker);
+    }
+
+    // Small eddies are water-clipped, including around foreground dock piles.
+    const QPointF eddies[]={{1011,774},{1125,764},{1246,778},{1436,796},{737,793}};
+    for (int e=0;e<5;++e) for (int j=0;j<3;++j) {
+        const double age=cycle(t/(5.31+e*.419+j*.271)+j*.381966+e*.217);
+        const double radius=3+age*(9+e);
+        if (!waterAt(eddies[e],radius+2)) continue;
+        p->setBrush(Qt::NoBrush);
+        p->setPen(QPen(QColor(174,229,236,int((29-10*night)*std::pow(std::sin(pi*age),2))),.7));
+        p->drawArc(QRectF(eddies[e].x()-radius,eddies[e].y()-radius*.28,radius*2,radius*.56),
+                   int((e*43+t*3)*16),int((150+35*std::sin(t*.217+e))*16));
     }
 
     // Fishing skiffs live on the distant sea; shadows, sails and wakes give volume.
     for (int i=0; i<3; ++i) {
         const double phase = t*(.012+i*.002)+i*2.1;
-        const QPointF center(i==0 ? 75+115*std::sin(phase) : 1400+130*std::sin(phase),
-                             305+i*68+3*std::sin(t*.7+i));
+        const QPointF center(i==0 ? 75+1.1*std::sin(phase) : 1450+i*70+1.3*std::sin(phase),
+                             305+i*68+.35*std::sin(t*.7+i));
         p->save(); p->translate(center); p->scale(.45+i*.12,.45+i*.12);
         p->setPen(QPen(QColor(167,218,230,80),1));
         p->drawLine(QPointF(-32,5),QPointF(-12,2));
@@ -144,7 +183,7 @@ void WorldLife::paint(QPainter *p) {
         p->setPen(QPen(QColor("#b08d61"),1.3)); p->drawLine(QPointF(0,1),QPointF(0,-33));
         p->setPen(Qt::NoPen);
         p->setBrush(QColor::fromRgbF(.85-night*.4,.83-night*.4,.69-night*.3));
-        p->drawPolygon(QPolygonF{QPointF(-1,-31),QPointF(-1,-3),QPointF(-15,-4+std::sin(t+i))});
+        p->drawPolygon(QPolygonF{QPointF(-1,-31),QPointF(-1,-3),QPointF(-15,-4+.35*wind+.15*std::sin(t*.91+i))});
         p->setBrush(QColor::fromRgbF(.95-night*.4,.9-night*.4,.76-night*.3));
         p->drawPolygon(QPolygonF{QPointF(2,-29),QPointF(16,-5),QPointF(2,-3)});
         p->restore();
@@ -194,29 +233,9 @@ void WorldLife::paint(QPainter *p) {
     const QPointF chimneys[] = {{509,307},{678,364},{736,414},{986,476},{1121,477}};
     for (int chimney=0; chimney<5; ++chimney) for (int i=0; i<4; ++i) {
         const double phase = cycle(t/(9+chimney*.8)+i*.25+chimney*.17);
-        const QPointF point = chimneys[chimney]+QPointF(phase*24+std::sin(t*.3+chimney)*phase*8,-phase*44);
+        const QPointF point = chimneys[chimney]+QPointF(phase*24+(wind*5+std::sin(t*.3+chimney)*3)*phase,-phase*44);
         glow(p,point,3+phase*15,QColor(190,202,204,int(std::sin(phase*pi)*(36-18*night))));
     }
 
-    // Fireflies stay around gardens. Their light is reflected in a soft local halo.
-    for (int i=0; i<22; ++i) {
-        const double pulse = std::pow(std::max(0.0,std::sin(t*(.7+i*.023)+i*2.4)),3)*night;
-        if (pulse<.02) continue;
-        const QPointF point(520+cycle(i*.618)*570+7*std::sin(t*.5+i),
-                            450+cycle(i*.382)*160+5*std::sin(t*.7+i*3));
-        glow(p,point,6,QColor(185,245,113,int(80*pulse)));
-        p->setPen(Qt::NoPen); p->setBrush(QColor(226,255,160,int(220*pulse)));
-        p->drawEllipse(point,.85,.85);
-    }
-
-    // A rare meteor, fading before it reaches the distant ridge.
-    const double meteor = cycle((t+19)/67)*67;
-    if (meteor<1.3 && night>.01) {
-        const QPointF head(1040+meteor*170,42+meteor*75);
-        QLinearGradient tail(head-QPointF(65,29),head);
-        tail.setColorAt(0,Qt::transparent);
-        tail.setColorAt(1,QColor(211,232,255,int(180*night*std::sin(meteor/1.3*pi))));
-        p->setPen(QPen(QBrush(tail),1.4)); p->drawLine(head-QPointF(65,29),head);
-    }
     p->restore();
 }

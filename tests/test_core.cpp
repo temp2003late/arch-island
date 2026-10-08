@@ -6,6 +6,26 @@
 class CoreTest : public QObject {
     Q_OBJECT
 private slots:
+#ifdef ISLAND_HAS_DBUS
+    void systemMotionHints() {
+        QTemporaryDir dir;
+        Settings settings(dir.filePath("motion.ini"));
+        const auto hint=[&](QString group,QString key,QVariant value) {
+            QVERIFY(QMetaObject::invokeMethod(&settings,"portalSettingChanged",Qt::DirectConnection,
+                Q_ARG(QString,group),Q_ARG(QString,key),Q_ARG(QDBusVariant,QDBusVariant(value))));
+        };
+        hint("org.gnome.desktop.interface","enable-animations",false);
+        QVERIFY(settings.systemReducedMotion());
+        hint("org.kde.kdeglobals.KDE","AnimationDurationFactor",0.0);
+        hint("org.gnome.desktop.interface","enable-animations",true);
+        QVERIFY(settings.systemReducedMotion());
+        hint("org.kde.kdeglobals.KDE","AnimationDurationFactor",1.0);
+        QVERIFY(!settings.systemReducedMotion());
+        hint("org.gnome.desktop.interface","enable-animations","invalid");
+        QVERIFY(!settings.systemReducedMotion());
+        QVERIFY(!settings.reducedMotion()); // Does not overwrite the user's choice.
+    }
+#endif
     void boundedHistory() {
         SampleHistory history;
         QVERIFY(history.values().isEmpty());

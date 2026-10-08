@@ -21,7 +21,7 @@ ApplicationWindow {
     palette.highlight: "#237abd"
     palette.highlightedText: "#e7f4ff"
     palette.mid: "#2b455e"
-    property bool animationsActive: !preferences.reducedMotion && visibility !== Window.Minimized && visible
+    property bool animationsActive: !preferences.reducedMotion && !preferences.systemReducedMotion && visibility !== Window.Minimized && visible
     function bytes(value) {
         if (value < 0) return "Unavailable"
         return metricNumber(value) + " " + metricUnit(value)
@@ -156,7 +156,7 @@ ApplicationWindow {
                 }
                 Label {
                     Layout.fillWidth: true; Layout.topMargin: 4
-                    text: preferences.reducedMotion ? "Reduced motion enabled" : "Local measurements · last 60 seconds"
+                    text: preferences.reducedMotion || preferences.systemReducedMotion ? "Reduced motion enabled" : "Local measurements · last 60 seconds"
                     color: "#536f8b"; font.pixelSize: 9; elide: Text.ElideRight
                 }
             }
