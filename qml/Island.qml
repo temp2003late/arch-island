@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.impl
 import ArchIsland 1.0
 Item {
     id: island
@@ -8,6 +9,9 @@ Item {
     property real cpuLoad: -1
     property real ramRatio: -1
     property real traffic: -1
+    property var cpuHistory: []
+    property var memoryHistory: []
+    property string networkValue: ""
     property bool artworkReady: nightArt.status === Image.Ready && dayArt.status === Image.Ready
     property real heat: cpuLoad < 0 ? 0 : Math.min(1, cpuLoad / 100)
     Behavior on heat { NumberAnimation { duration: island.animate ? 1400 : 0; easing.type: Easing.InOutSine } }
@@ -53,7 +57,7 @@ Item {
         }
         function tagY(preferred) {
             const top = visibleTop
-            return Math.max(top + 12/scale, Math.min(preferred, top + (island.height-42)/scale))
+            return Math.max(top + 12/scale, Math.min(preferred, top + (island.height-70)/scale))
         }
         Image {
             id: sceneMask
@@ -204,7 +208,8 @@ Item {
         SceneTag {
             objectName: "cpuSceneTag"
             x: world.tagX(646, width); y: world.tagY(126); scale: 1/world.scale; transformOrigin: Item.TopLeft
-            text: "CPU"; accent: "#ff955e"; value: island.cpuLoad < 0 ? "—" : island.cpuLoad.toFixed(0)+"%"
+            iconName: "cpu"; samples: island.cpuHistory
+            text: "CPU"; accent: "#d1aa7d"; value: island.cpuLoad < 0 ? "—" : island.cpuLoad.toFixed(0)+"%"
             active: volcanoButton.hovered; onClicked: island.volcanoClicked()
         }
         SceneTag {
@@ -212,13 +217,15 @@ Item {
             objectName: "ramSceneTag"
             x: world.tagX(1170, width)
             y: world.tagY(776); scale: 1/world.scale; transformOrigin: Item.TopLeft
-            text: "RAM"; accent: "#58b9ff"; value: island.ramRatio < 0 ? "—" : (island.ramRatio*100).toFixed(0)+"%"
+            iconName: "memory"; samples: island.memoryHistory
+            text: "RAM"; accent: "#a4b9c9"; value: island.ramRatio < 0 ? "—" : (island.ramRatio*100).toFixed(0)+"%"
             active: portButton.hovered; onClicked: island.portClicked()
         }
         SceneTag {
             objectName: "networkSceneTag"
             x: world.tagX(boat.x+215, width); y: world.tagY(boat.y+143); scale: 1/world.scale; transformOrigin: Item.TopLeft
-            text: "Network"; accent: "#39ddb8"
+            iconName: "network"; value: island.networkValue
+            text: "Network"; accent: "#9cbdb4"
             onClicked: island.networkClicked()
         }
     }
@@ -233,21 +240,28 @@ Item {
     }
     component SceneTag: Button {
         id: tag
-        property color accent: "#5fbdff"
+        property color accent: "#ceb47d"
         property string value: ""
         property bool active: false
         hoverEnabled: true
-        width: tagContent.implicitWidth+22; height: 30
+        property string iconName: "cpu"
+        property var samples: []
+        width: Math.max(136, tagContent.implicitWidth+26); height: 56
+        Accessible.name: text + " " + value
         background: Rectangle {
-            radius: 11; color: tag.hovered || tag.active ? "#ed132b40" : "#de071728"
-            border.color: tag.hovered || tag.active ? tag.accent : "#486176"
+            radius: 6; color: tag.hovered || tag.active ? "#f0102338" : "#ed081827"
+            border.color: tag.hovered || tag.active || tag.activeFocus ? tag.accent : "#b89a65"
         }
         contentItem: Row {
             id: tagContent
-            spacing: 7
-            Rectangle { width: 6; height: 6; radius: 3; color: tag.accent; anchors.verticalCenter: parent.verticalCenter }
-            Text { text: tag.text; color: "#eef6ff"; font.pixelSize: 11; font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
-            Text { visible: tag.value.length > 0; text: tag.value; color: tag.accent; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+            spacing: 12
+            IconImage { source: "qrc:/assets/icons/"+tag.iconName+".svg"; sourceSize: Qt.size(48,48); width: 24; height: 24; color: tag.accent; anchors.verticalCenter: parent.verticalCenter }
+            Column {
+                anchors.verticalCenter: parent.verticalCenter; spacing: 3
+                Text { text: tag.text; color: "#f1ede5"; font.pixelSize: 10 }
+                Text { visible: tag.value.length > 0; text: tag.value; color: "#f1ede5"; font.pixelSize: 15; font.weight: Font.Medium }
+            }
+            HistoryPlot { visible: tag.samples.length > 0; width: 48; height: 26; values: tag.samples; color: tag.accent; maximum: 100; anchors.verticalCenter: parent.verticalCenter }
         }
         leftPadding: 11; rightPadding: 11
     }

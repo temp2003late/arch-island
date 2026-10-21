@@ -261,6 +261,23 @@ private slots:
         QVERIFY(QTest::qWaitForWindowExposed(window));
         QTRY_VERIFY_WITH_TIMEOUT(monitor.cpu() >= 0, 4000);
         QVERIFY(monitor.memoryTotal() > 0);
+        QVERIFY(monitor.storageTotal() > 0);
+        QVERIFY(monitor.storageUsed() >= 0);
+        QVERIFY(monitor.storageUsed() <= monitor.storageTotal());
+        QVERIFY(!monitor.storageFormat().isEmpty());
+        QVERIFY(monitor.uptime() >= 0);
+        QVERIFY(!monitor.hostName().isEmpty());
+        for (const auto &entry : {qMakePair("storageNav", "storageDialog"), qMakePair("alertsNav", "alertsDialog")}) {
+            auto *nav = window->findChild<QQuickItem *>(entry.first);
+            auto *dialog = window->findChild<QObject *>(entry.second);
+            QVERIFY(nav); QVERIFY(dialog);
+            QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
+                nav->mapToScene(QPointF(nav->width()/2, nav->height()/2)).toPoint());
+            QTRY_VERIFY(dialog->property("visible").toBool());
+            QVERIFY(QMetaObject::invokeMethod(dialog, "close"));
+            QTRY_VERIFY(!dialog->property("visible").toBool());
+            QTest::qWait(200);
+        }
         auto *scene = window->findChild<QQuickItem *>("islandScene");
         QVERIFY(scene); QVERIFY(scene->property("night").toBool());
         QTRY_VERIFY_WITH_TIMEOUT(scene->property("artworkReady").toBool(),5000);

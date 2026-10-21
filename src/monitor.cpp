@@ -3,6 +3,10 @@
 #include <QDateTime>
 #include <QFileInfo>
 #include <unistd.h>
+#include <QStorageInfo>
+#include <QDir>
+#include <QSysInfo>
+#include <cmath>
 Monitor::Monitor(Settings *settings, QObject *p) : QObject(p), m_settings(settings) {
     connect(&m_timer, &QTimer::timeout, this, &Monitor::sample);
     connect(settings, &Settings::changed, this, &Monitor::updateAppearance);
@@ -36,6 +40,8 @@ void Monitor::scan() {
     m_busy = true; m_scanGeneration = m_generation;
     m_worker.setFuture(QtConcurrent::run(&Metrics::scanProcesses));
 }
+QString Monitor::hostName() const { return QSysInfo::machineHostName(); }
+QString Monitor::kernelVersion() const { return QSysInfo::kernelVersion(); }
 void Monitor::sample() {
     QStringList errors;
     const auto cpuText = Metrics::readFile("/proc/stat");
@@ -74,6 +80,24 @@ void Monitor::sample() {
     const auto rates = m_networkSampler.sample(m_interface, currentNetwork, now);
     m_rx = rates.received; m_tx = rates.sent;
     if (!currentNetwork) errors << "Network unavailable";
+    if (m_storageTick++ % 10 == 0) {
+        const QStorageInfo disk(QDir::rootPath());
+        const bool valid = disk.isValid() && disk.isReady() && disk.bytesTotal() > 0
+            && disk.bytesFree() >= 0 && disk.bytesFree() <= disk.bytesTotal();
+        m_storageTotal = valid ? double(disk.bytesTotal()) : -1;
+        m_storageUsed = valid ? double(disk.bytesTotal() - disk.bytesFree()) : -1;
+        m_storageFormat = valid ? QString::fromLatin1(disk.fileSystemType()) : QString();
+    }
+    if (m_storageTotal < 0) errors << "Root filesystem unavailable";
+    m_uptime = -1;
+    if (const auto text = Metrics::readFile("/proc/uptime")) {
+        bool ok = false;
+        const double seconds = text->simplified().split(' ').value(0).toDouble(&ok);
+        if (ok && std::isfinite(seconds) && seconds >= 0) m_uptime = seconds;
+    }
+    m_alerts = errors;
+    if (m_storageTotal > 0 && m_storageUsed / m_storageTotal >= .9)
+        m_alerts << "Root filesystem is at least 90% full";
     m_status = errors.isEmpty() ? "Live · sampled every second" : errors.join(" · ");
     m_cpuHistory.append(m_cpu);
     m_memoryHistory.append(m_total > 0 ? m_used/m_total*100 : -1);

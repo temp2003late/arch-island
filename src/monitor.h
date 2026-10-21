@@ -24,7 +24,21 @@ class Monitor final : public QObject {
     Q_PROPERTY(QVariantList memoryHistory READ memoryHistory NOTIFY sampled)
     Q_PROPERTY(QVariantList receiveHistory READ receiveHistory NOTIFY sampled)
     Q_PROPERTY(QVariantList sendHistory READ sendHistory NOTIFY sampled)
+    Q_PROPERTY(double storageTotal READ storageTotal NOTIFY updated)
+    Q_PROPERTY(double storageUsed READ storageUsed NOTIFY updated)
+    Q_PROPERTY(QString storageFormat READ storageFormat NOTIFY updated)
+    Q_PROPERTY(QString hostName READ hostName CONSTANT)
+    Q_PROPERTY(QString kernelVersion READ kernelVersion CONSTANT)
+    Q_PROPERTY(double uptime READ uptime NOTIFY updated)
+    Q_PROPERTY(QStringList alerts READ alerts NOTIFY updated)
 public:
+    double storageTotal() const { return m_storageTotal; }
+    double storageUsed() const { return m_storageUsed; }
+    QString storageFormat() const { return m_storageFormat; }
+    QString hostName() const;
+    QString kernelVersion() const;
+    double uptime() const { return m_uptime; }
+    QStringList alerts() const { return m_alerts; }
     explicit Monitor(Settings *settings, QObject *parent = nullptr);
     ~Monitor() override;
     double cpu() const { return m_cpu; }
@@ -66,6 +80,10 @@ private:
     QStringList m_interfaces;
     double m_cpu = -1, m_used = -1, m_total = -1, m_rx = -1, m_tx = -1;
     bool m_night = false, m_open = false, m_byMemory = false, m_busy = false;
+    double m_storageTotal = -1, m_storageUsed = -1, m_uptime = -1;
+    QString m_storageFormat;
+    QStringList m_alerts;
+    int m_storageTick = 0;
     int m_tick = 0;
     quint64 m_generation = 0, m_scanGeneration = 0;
 };

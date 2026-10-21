@@ -1,66 +1,74 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.impl
 import QtQuick.Layouts
 import ArchIsland 1.0
 Rectangle {
     id: card
+    Theme { id: theme }
     property string caption: "CPU"
     property string value: "—"
     property string unit: ""
     property string detail: ""
     property string iconName: "cpu"
-    property color accent: "#ff8656"
+    property color accent: theme.cpu
     property real ratio: -1
     property var history: []
     property real maximum: 100
-    property bool compact: height < 142
-    implicitHeight: 156
-    radius: 16
-    border.color: "#223348"
-    gradient: Gradient {
-        GradientStop { position: 0; color: "#142337" }
-        GradientStop { position: 1; color: "#0c192a" }
-    }
-    Rectangle { x: 16; y: 0; width: parent.width-32; height: 1; color: "#23384e"; opacity: 0.6 }
+    property bool bar: false
+    readonly property bool compact: height < 90
+    implicitHeight: 124
+    radius: 9
+    color: "#f3efe8"
+    border.color: theme.line
+    HoverHandler { id: hover }
+    ToolTip.visible: hover.hovered && card.compact
+    ToolTip.text: card.detail
+    ToolTip.delay: 500
     RowLayout {
-        id: summary
-        x: 13; y: card.compact ? 11 : 17
-        width: parent.width-26; spacing: 11
-        Item {
-            Layout.preferredWidth: card.compact ? 42 : 54
-            Layout.preferredHeight: Layout.preferredWidth
-            GaugeArc { anchors.fill: parent; value: card.ratio; color: card.accent }
-            Image {
-                anchors.centerIn: parent; width: card.compact ? 19 : 23; height: width
+        anchors.left: parent.left; anchors.right: parent.right
+        anchors.top: parent.top; anchors.bottom: card.compact ? parent.bottom : detailLabel.top
+        anchors.margins: card.compact ? 8 : 14; anchors.bottomMargin: card.compact ? 8 : 5
+        spacing: 12
+        Rectangle {
+            Layout.preferredWidth: card.width < 240 ? 32 : 42
+            Layout.preferredHeight: width
+            radius: width/2; color: theme.surface
+            IconImage {
+                anchors.centerIn: parent; width: 23; height: 23
                 source: "qrc:/assets/icons/" + card.iconName + ".svg"
-                sourceSize: Qt.size(46,46)
+                sourceSize: Qt.size(46,46); color: theme.navy
             }
         }
         ColumnLayout {
             Layout.fillWidth: true; spacing: 5
-            Label { text: card.caption; color: "#9bafc7"; font.pixelSize: 11; font.letterSpacing: 0.8; Layout.fillWidth: true; elide: Text.ElideRight }
+            Label { text: card.caption; color: theme.navy; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
             RowLayout {
-                Layout.fillWidth: true; spacing: 5
+                Layout.fillWidth: true; spacing: 4
                 Label {
-                    text: card.value; color: "#ecf3fd"
-                    font.pixelSize: card.compact ? 23 : 28; font.weight: Font.Medium
+                    text: card.value; color: theme.navy
+                    font.pixelSize: card.width < 240 ? 22 : 27; font.weight: Font.Medium
                     Layout.minimumWidth: 0; elide: Text.ElideRight
                 }
-                Label { text: card.unit; color: "#a7bbd0"; font.pixelSize: 12; Layout.alignment: Qt.AlignBottom; bottomPadding: 4 }
-                Item { Layout.fillWidth: true }
+                Label { text: card.unit; color: theme.secondary; font.pixelSize: 10; Layout.alignment: Qt.AlignBottom; bottomPadding: 4 }
+                Item {
+                    Layout.fillWidth: true; Layout.minimumWidth: 15; Layout.preferredHeight: 32
+                    HistoryPlot { anchors.fill: parent; visible: !card.bar; values: card.history; color: card.accent; maximum: card.maximum }
+                    Rectangle {
+                        visible: card.bar; anchors.verticalCenter: parent.verticalCenter
+                        width: parent.width; height: 7; radius: 4; color: theme.surface
+                        Rectangle { width: parent.width*Math.max(0,Math.min(1,card.ratio)); height: parent.height; radius: 4; color: card.accent }
+                    }
+                }
             }
         }
     }
     Label {
-        x: 17; anchors.top: summary.bottom; anchors.topMargin: card.compact ? 5 : 9
-        width: parent.width-34
-        text: card.detail; color: "#7792ac"; font.pixelSize: 10
-        elide: Text.ElideRight
-    }
-    HistoryPlot {
+        id: detailLabel
+        visible: !card.compact
         anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
-        anchors.leftMargin: 13; anchors.rightMargin: 13; anchors.bottomMargin: 10
-        height: Math.max(21, card.height-summary.height-summary.y-37)
-        values: card.history; color: card.accent; maximum: card.maximum
+        anchors.leftMargin: 16; anchors.rightMargin: 12; anchors.bottomMargin: 12
+        text: card.detail; color: theme.secondary; font.pixelSize: 10
+        elide: Text.ElideRight
     }
 }

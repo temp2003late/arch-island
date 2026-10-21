@@ -88,3 +88,21 @@ QT_QPA_PLATFORM=wayland scripts/measure-scene-stability.sh ./build/arch-island
 Останній скрипт виконує такий самий обмежений 120-секундний сценарій зі знімками RSS і CPU ticks. Його shell syntax перевірено; наведені вимірювання отримано попереднім еквівалентним локальним сценарієм. Налаштування для вимірювань ізольовані у тимчасовому каталозі.
 
 Підтримку системних GNOME/KDE сигналів перевірено модульно; реальне перемикання системного параметра в окремих desktop environments не перевірено. Для цього оновлення не повторювали XWayland, фізичний HiDPI або мінімальний Qt 6.4. Локальні обмеження плоскої художньої сцени описані в [living-scene.md](living-scene.md).
+
+## Arthelm redesign · 2026-10-21
+
+- Release configure and build completed with CMake/Ninja and Qt 6.12.0.
+- `ctest --test-dir build --output-on-failure`: 2/2 suites passed (core and GUI offscreen).
+- The GUI interaction test also passed on the Wayland display with hardware rendering: island interactions, process drawer, settings, day/night modes, reduced motion, minimum size, and minimize/restore. The Wayland platform emitted text-input focus warnings; the test collected no QML engine warnings.
+- Inspected actual night and compact daytime captures for the new colors, Pixel Sail branding, embedded fonts, and resource values. Offscreen software screenshots document the interface; they do not establish hardware effect quality.
+
+The separate Arch Island / IN DEVELOPMENT header block was subsequently removed. Rebuilt successfully and reran `islandInteraction` on Wayland and offscreen software; both passed. The hardware test verifies that sea and town pixels change as the scene clock advances while roof pixels remain stable. The documented screenshot was refreshed.
+
+
+## Arthelm Beacon layout — 2026-10-21
+
+Implemented the header, expanded responsive navigation, five metric cards, scene badges and light system footer from `arthelm_beacon.png`. Added root filesystem usage, hostname/kernel/uptime and scoped monitoring alerts. Storage and alert navigation are covered by real click tests; storage values and uptime are checked in the GUI integration run.
+
+Validation: Release build succeeded; all 12 core and 11 offscreen GUI cases passed. After correcting overlapping detail text at 800×640, `islandInteraction` passed again on offscreen software and Wayland hardware rendering. Inspected full-size daytime and 800×640 captures. No QML engine warnings were collected. Wayland still emits platform text-input focus warnings, and the core process-model test emits its existing invalid-type warning. Hardware scene motion and stable roof checks passed. `docs/arch-island.png` is the daytime Wayland capture.
+
+The reference's new mountain architecture, light trails and exact artwork are not implemented. Existing day/night panoramas, spatial masks, shaders and animated objects are preserved. Alerts only report unavailable monitored data and root usage >=90%; Storage Used is filesystem occupancy, not SMART health. Footer shows the actual network interface instead of an unmeasured active-user count.

@@ -68,7 +68,7 @@ void HistoryPlot::paint(QPainter *p) {
         }
     };
     drawSeries(m_values,m_color,true);
-    if (!m_secondary.isEmpty()) drawSeries(m_secondary,QColor("#93d7df"),false);
+    if (!m_secondary.isEmpty()) drawSeries(m_secondary,QColor("#9e91ac"),false);
 }
 GaugeArc::GaugeArc(QQuickItem *p) : QQuickPaintedItem(p) { setAntialiasing(true); setImplicitSize(54,54); }
 void GaugeArc::setValue(double v) { if (m_value==v) return; m_value=v; update(); emit changed(); }

@@ -27,3 +27,21 @@ Use case: lighting-weather. Asset type: daytime variant of the EXACT same game e
 ## Sailboat prompt
 
 Use case: stylized-concept. Asset type: a single transparent PNG game sprite to composite over the water of a detailed cinematic Caribbean island. One beautiful small classic Caribbean sailing yacht, ivory triangular mainsail and smaller foresail on one tall wooden mast, mahogany hull, subtle golden lantern glow along the deck, delicate detailed rigging. Viewed from elevated three-quarter front-side perspective, bow pointing toward the RIGHT, waterline hull horizontal with slight perspective, boat seen from above just enough to see the deck. Realistic miniature painted physical detail, cool moonlit cream sailcloth, warm brown varnished wood, sophisticated realism. The entire yacht including mast and hull must be visible with a 5% margin. Square canvas, yacht occupies most of height. Genuinely TRANSPARENT background and no scene, no ocean rectangle, no waves, no shadow plane, no text, no people, no labels, no logos. This sprite will be displayed about 115 pixels high over a nighttime ocean illustration so clean readable silhouette and fine material shading are essential. No vector/flat cartoon look.
+
+## Arthelm native interface · 2026-10-21
+
+Arch Island is presented as an Arthelm product in development. The interface follows the supplied brand brief and the local Arthelm website's brand tokens: navy `#102338`, deep navy `#081827`, ivory `#f1ede5`, surface `#e8e3d9`, brass `#ceb47d`, muted brass `#b89a65`, and secondary text `#526171`. `qml/Theme.qml` contains the shared native UI palette. Restrained secondary colors distinguish the measured resources; the scene labels use muted colors on dark navy.
+
+The ivory header pairs the Pixel Sail mark and Arthelm wordmark with a quiet system-monitor descriptor; the separate product-name/development badge has been removed. Resource panels use warm light surfaces, narrow rules, and moderate corner radii. Drawers and settings use navy surfaces and brass focus/selection accents. The existing day/night panoramas and animation geometry are preserved.
+
+- `assets/brand/arthelm.webp`: copied unchanged from the owner's local `Arthelm/arthelm-website/public/brand-light.webp`. This is a brand asset, not a newly generated mark.
+- `assets/fonts/inter.ttf`: Inter variable font from [Google Fonts](https://github.com/google/fonts/tree/main/ofl/inter).
+- `assets/fonts/fraunces.ttf`: Fraunces variable font from [Google Fonts](https://github.com/google/fonts/tree/main/ofl/fraunces).
+- The corresponding `*-OFL.txt` files preserve the SIL Open Font License and copyright notices. Both fonts are embedded in the executable, with no runtime network requests.
+
+`docs/arch-island.png` is an actual Qt application capture, using the offscreen software backend; it is not a product illustration or a conceptual mockup.
+
+
+### Beacon interface reference
+
+`arthelm_beacon.png` is the supplied UI reference for the Arthelm Beacon layout. Its artwork is not embedded in the executable. The implementation adapts its ivory panels, navy navigation, brass accents, serif brand heading, inline metric sparklines and light footer into native QML controls. The original animated island panoramas remain in use; the reference landscape would require new aligned artwork and animation masks. Filesystem occupancy replaces the misleading “Storage Health” caption; no fabricated process count, active-user count or health status is displayed.
