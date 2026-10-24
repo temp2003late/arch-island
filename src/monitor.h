@@ -7,6 +7,7 @@
 #include "history.h"
 class Monitor final : public QObject {
     Q_OBJECT
+    Q_PROPERTY(int processCount READ processCount NOTIFY updated)
     Q_PROPERTY(double cpu READ cpu NOTIFY updated)
     Q_PROPERTY(double memoryUsed READ memoryUsed NOTIFY updated)
     Q_PROPERTY(double memoryTotal READ memoryTotal NOTIFY updated)
@@ -32,6 +33,7 @@ class Monitor final : public QObject {
     Q_PROPERTY(double uptime READ uptime NOTIFY updated)
     Q_PROPERTY(QStringList alerts READ alerts NOTIFY updated)
 public:
+    int processCount() const { return m_processCount; }
     double storageTotal() const { return m_storageTotal; }
     double storageUsed() const { return m_storageUsed; }
     QString storageFormat() const { return m_storageFormat; }
@@ -83,6 +85,7 @@ private:
     double m_storageTotal = -1, m_storageUsed = -1, m_uptime = -1;
     QString m_storageFormat;
     QStringList m_alerts;
+    int m_processCount = -1;
     int m_storageTick = 0;
     int m_tick = 0;
     quint64 m_generation = 0, m_scanGeneration = 0;

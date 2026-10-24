@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.impl
+import QtQuick.Shapes
 import ArchIsland 1.0
 Item {
     id: island
@@ -12,9 +13,12 @@ Item {
     property var cpuHistory: []
     property var memoryHistory: []
     property string networkValue: ""
+    property string networkOutValue: ""
+    property real storageRatio: -1
+    property int processCount: -1
+    property int alertCount: 0
+    property var receiveHistory: []
     property bool artworkReady: nightArt.status === Image.Ready && dayArt.status === Image.Ready
-    property real heat: cpuLoad < 0 ? 0 : Math.min(1, cpuLoad / 100)
-    Behavior on heat { NumberAnimation { duration: island.animate ? 1400 : 0; easing.type: Easing.InOutSine } }
     // One prewarmed, monotonic simulation clock shared by every lighting mode.
     property real sceneTime: 143.7
     property real sailingPhase: 0.7
@@ -32,6 +36,8 @@ Item {
     signal volcanoClicked()
     signal portClicked()
     signal networkClicked()
+    signal storageClicked()
+    signal alertsClicked()
     clip: true
     Rectangle {
         anchors.fill: parent
@@ -68,7 +74,7 @@ Item {
             id: dayArt
             objectName: "dayArtwork"
             x: -200; y: 0; width: 2000; height: 1000
-            source: "qrc:/assets/art/island-day-wide.png"
+            source: "qrc:/assets/art/beacon-day.png"
             smooth: true; mipmap: true
             visible: GraphicsInfo.api === GraphicsInfo.Software
         }
@@ -76,7 +82,7 @@ Item {
             id: nightArt
             objectName: "nightArtwork"
             x: -200; y: 0; width: 2000; height: 1000
-            source: "qrc:/assets/art/island-night-wide.png"
+            source: "qrc:/assets/art/beacon-night.png"
             opacity: island.night ? 1 : 0
             smooth: true; mipmap: true
             visible: GraphicsInfo.api === GraphicsInfo.Software
@@ -91,7 +97,6 @@ Item {
             property var maskSource: sceneMask
             property real sceneTime: island.sceneTime
             property real darkness: nightArt.opacity
-            property real heat: island.heat
             fragmentShader: "qrc:/assets/shaders/living.frag.qsb"
         }
         WorldLife {
@@ -101,46 +106,13 @@ Item {
             darkness: nightArt.opacity
             textureSize: Qt.size(Math.max(1, Math.min(1600, width*world.scale)), Math.max(1, Math.min(1000, height*world.scale)))
         }
-        // Irregular, analytically aged plumes are present on the first frame.
-        Image {
-            x: 529; y: 142; width: 80; height: 50
-            source: "qrc:/assets/glow.svg"; sourceSize: Qt.size(160,100)
-            opacity: (0.07 + nightArt.opacity*0.11) * (0.91+0.06*Math.sin(island.sceneTime*.173)+0.03*Math.sin(island.sceneTime*.317))
-        }
-        Repeater {
-            model: 13
-            Image {
-                required property int index
-                property real lifetime: 13.1 + index*.731
-                property real phase: (island.sceneTime / lifetime + index*.61803398875) % 1
-                property real wind: .58*Math.sin(island.sceneTime*.173)+.27*Math.sin(island.sceneTime*.317+1.2)+.15*Math.sin(island.sceneTime*.071+2.4)
-                x: 538 + phase*(24+index*1.3) + wind*phase*12
-                y: 151 - phase*(80+index*2.7)
-                width: 30 + phase*(52+index*1.1); height: width*(.8+index%3*.11)
-                source: "qrc:/assets/smoke.svg"; sourceSize: Qt.size(96,96)
-                rotation: index*47 + phase*13
-                opacity: Math.pow(Math.sin(Math.PI*phase),2)*(.045+.025*(1-nightArt.opacity))
-            }
-        }
-        Repeater {
-            model: 5
-            Rectangle {
-                required property int index
-                property real phase: (island.sceneTime / (7.7 + index*1.137) + index*.61803398875) % 1
-                x: 562 + Math.sin(index*4.3)*phase*16 + phase*8*Math.sin(island.sceneTime*.173)
-                y: 173-phase*(27+index*4)
-                width: 1.1+index%2*.4; height: width; radius: width
-                color: "#ffb553"
-                opacity: Math.pow(Math.sin(Math.PI*phase),3)*(.15+.28*nightArt.opacity)
-            }
-        }
         // Beam points out to open water; negative projection is occluded by the
         // tower/island. Its room rotates throughout daytime too.
         Image {
             x: 1178; y: 269; width: 340; height: 30
             source: "qrc:/assets/beam.svg"; sourceSize: Qt.size(680,60)
             property real azimuth: island.sceneTime*.137
-            opacity: (0.004+nightArt.opacity*.038)*Math.pow(Math.max(0,Math.cos(azimuth)),2)
+            opacity: (0.13+nightArt.opacity*.25)*Math.pow(Math.max(0,Math.cos(azimuth)),2)
             transformOrigin: Item.Left
             scale: .25+.75*Math.abs(Math.cos(azimuth))
             rotation: 4+9*Math.sin(azimuth)
@@ -148,7 +120,7 @@ Item {
         Image {
             x: 1169; y: 264; width: 21; height: 18
             source: "qrc:/assets/glow.svg"
-            opacity: (.05+.14*nightArt.opacity)*(.65+.35*Math.cos(island.sceneTime*.137))
+            opacity: (.3+.3*nightArt.opacity)*(.65+.35*Math.cos(island.sceneTime*.137))
         }
         // Cargo is part of the painted harbor; RAM is shown by the tag and card.
         Item {
@@ -189,7 +161,7 @@ Item {
             contentItem: Item {}
             onClicked: island.volcanoClicked()
             ToolTip.delay: 650; ToolTip.timeout: 2500
-            ToolTip.visible: hovered; ToolTip.text: "Volcano · processes by CPU"
+            ToolTip.visible: hovered; ToolTip.text: "Summit · processes by CPU"
         }
         Button {
             id: portButton
@@ -204,30 +176,110 @@ Item {
             ToolTip.delay: 650; ToolTip.timeout: 2500
             ToolTip.visible: hovered; ToolTip.text: "Harbor · processes by memory"
         }
-        // Label sizes stay in screen pixels even as the art scales.
-        SceneTag {
-            objectName: "cpuSceneTag"
-            x: world.tagX(646, width); y: world.tagY(126); scale: 1/world.scale; transformOrigin: Item.TopLeft
-            iconName: "cpu"; samples: island.cpuHistory
-            text: "CPU"; accent: "#d1aa7d"; value: island.cpuLoad < 0 ? "—" : island.cpuLoad.toFixed(0)+"%"
-            active: volcanoButton.hovered; onClicked: island.volcanoClicked()
+        // A native vector signal route, sharing the scene clock and world space.
+        Shape {
+            anchors.fill: parent
+            ShapePath {
+                strokeColor: "#b5e7c48b"; strokeWidth: 1.6; fillColor: "transparent"
+                startX: 560; startY: 230
+                PathCubic { x: 380; y: 520; control1X: 760; control1Y: 340; control2X: 250; control2Y: 390 }
+                PathCubic { x: 830; y: 515; control1X: 420; control1Y: 640; control2X: 740; control2Y: 390 }
+                PathCubic { x: 1160; y: 650; control1X: 940; control1Y: 620; control2X: 1040; control2Y: 570 }
+                PathCubic { x: 360; y: 800; control1X: 1500; control1Y: 950; control2X: 670; control2Y: 900 }
+            }
         }
-        SceneTag {
-            id: ramTag
-            objectName: "ramSceneTag"
-            x: world.tagX(1170, width)
-            y: world.tagY(776); scale: 1/world.scale; transformOrigin: Item.TopLeft
-            iconName: "memory"; samples: island.memoryHistory
-            text: "RAM"; accent: "#a4b9c9"; value: island.ramRatio < 0 ? "—" : (island.ramRatio*100).toFixed(0)+"%"
-            active: portButton.hovered; onClicked: island.portClicked()
+        Repeater {
+            objectName: "signalLights"
+            model: 36
+            Rectangle {
+                required property int index
+                property var curves: [
+                    [560,230,760,340,250,390,380,520],
+                    [380,520,420,640,740,390,830,515],
+                    [830,515,940,620,1040,570,1160,650],
+                    [1160,650,1500,950,670,900,360,800]]
+                property real progress: ((index / 36 + island.sceneTime * .003) % 1) * 4
+                property var curve: curves[Math.floor(progress)]
+                property real t: progress % 1
+                function coordinate(offset) {
+                    return Math.pow(1-t,3)*curve[offset] + 3*Math.pow(1-t,2)*t*curve[offset+2]
+                         + 3*(1-t)*t*t*curve[offset+4] + t*t*t*curve[offset+6]
+                }
+                x: coordinate(0)-2; y: coordinate(1)-2
+                width: 4; height: 4; radius: 2; color: "#fff0d4"
+                Image { anchors.centerIn: parent; width: 19; height: 19; source: "qrc:/assets/glow.svg" }
+            }
         }
-        SceneTag {
-            objectName: "networkSceneTag"
-            x: world.tagX(boat.x+215, width); y: world.tagY(boat.y+143); scale: 1/world.scale; transformOrigin: Item.TopLeft
-            iconName: "network"; value: island.networkValue
-            text: "Network"; accent: "#9cbdb4"
-            onClicked: island.networkClicked()
+        Repeater {
+            model: [{x:560,y:230},{x:380,y:520},{x:830,y:515},{x:1160,y:650},{x:1178,y:280}]
+            Item {
+                required property var modelData
+                x: modelData.x; y: modelData.y
+                Image { anchors.centerIn: parent; width: 42; height: 42; source: "qrc:/assets/glow.svg"; opacity: .7 }
+                Rectangle { anchors.centerIn: parent; width: 15; height: 15; radius: 8; color: "#f8ecd4"; border.width: 3; border.color: "#d5ad70" }
+            }
         }
+
+    }
+    Repeater {
+        model: [ {tag:cpuTag,x:560,y:230}, {tag:storageTag,x:380,y:520},
+                 {tag:processTag,x:830,y:515}, {tag:alertsTag,x:1178,y:280},
+                 {tag:networkTag,x:1160,y:650} ]
+        Shape {
+            required property var modelData
+            anchors.fill: parent
+            visible: island.width > 650
+            ShapePath {
+                strokeColor: "#cce3be83"; strokeWidth: 1; fillColor: "transparent"
+                startX: modelData.tag.x + modelData.tag.width/2
+                startY: modelData.tag.y + modelData.tag.height/2
+                PathLine { x: world.x + modelData.x*world.scale; y: world.y + modelData.y*world.scale }
+            }
+        }
+    }
+    SceneTag {
+        id: cpuTag
+        objectName: "cpuSceneTag"
+        x: Math.max(12, island.width*.43-width/2); y: 28
+        iconName: "cpu"; samples: island.width > 600 ? island.cpuHistory : []
+        text: "CPU"; value: island.cpuLoad < 0 ? "—" : island.cpuLoad.toFixed(0)+"%"
+        active: volcanoButton.hovered; onClicked: island.volcanoClicked()
+    }
+    SceneTag {
+        id: storageTag
+        objectName: "storageSceneTag"
+        x: island.width > 650 ? island.width*.1 : 14; y: island.height*.33
+        iconName: "storage"; text: "Storage"
+        value: island.storageRatio < 0 ? "—" : (island.storageRatio*100).toFixed(0)+"%"
+        onClicked: island.storageClicked()
+    }
+    SceneTag {
+        id: processTag
+        objectName: "ramSceneTag"
+        x: island.width > 650 ? island.width*.53 : island.width-width-14; y: island.height*(island.width > 650 ? .30 : .47)
+        iconName: "activity"; text: "Processes"
+        value: island.processCount < 0 ? "—" : island.processCount.toString()
+        active: portButton.hovered; onClicked: island.volcanoClicked()
+        ToolTip.visible: hovered
+        ToolTip.text: "Visible processes · RAM " + (island.ramRatio < 0 ? "unavailable" : (island.ramRatio*100).toFixed(0)+"%")
+    }
+    SceneTag {
+        id: alertsTag
+        objectName: "alertsSceneTag"
+        x: island.width-width-14; y: island.width < 600 ? 102 : 48
+        iconName: "alerts"; text: "Alerts"
+        value: island.alertCount ? island.alertCount + " alerts" : "All clear"
+        onClicked: island.alertsClicked()
+    }
+    SceneTag {
+        id: networkTag
+        objectName: "networkSceneTag"
+        x: island.width-width-14; y: island.width > 650 ? island.height*.63 : island.height-height-28
+        height: 74
+        iconName: "network"; text: "Network"
+        value: island.networkValue + "\n" + island.networkOutValue
+        samples: island.width > 600 ? island.receiveHistory : []; maximum: 0
+        onClicked: island.networkClicked()
     }
     // Edge shading helps the scene sit inside the application chrome.
     Rectangle {
@@ -246,6 +298,7 @@ Item {
         hoverEnabled: true
         property string iconName: "cpu"
         property var samples: []
+        property real maximum: 100
         width: Math.max(136, tagContent.implicitWidth+26); height: 56
         Accessible.name: text + " " + value
         background: Rectangle {
@@ -261,7 +314,7 @@ Item {
                 Text { text: tag.text; color: "#f1ede5"; font.pixelSize: 10 }
                 Text { visible: tag.value.length > 0; text: tag.value; color: "#f1ede5"; font.pixelSize: 15; font.weight: Font.Medium }
             }
-            HistoryPlot { visible: tag.samples.length > 0; width: 48; height: 26; values: tag.samples; color: tag.accent; maximum: 100; anchors.verticalCenter: parent.verticalCenter }
+            HistoryPlot { visible: tag.samples.length > 0; width: 48; height: 26; values: tag.samples; color: tag.accent; maximum: tag.maximum; anchors.verticalCenter: parent.verticalCenter }
         }
         leftPadding: 11; rightPadding: 11
     }

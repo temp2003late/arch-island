@@ -93,9 +93,9 @@ ApplicationWindow {
             color: theme.deep
             Column {
                 anchors.top: parent.top; anchors.topMargin: 18; anchors.horizontalCenter: parent.horizontalCenter; spacing: 9
-                NavButton { objectName: "overviewNav"; text: "Overview"; iconName: "home"; selected: !monitor.processesOpen && !settingsDialog.visible && !storageDialog.visible && !alertsDialog.visible; onClicked: { processesDrawer.close(); settingsDialog.close(); storageDialog.close(); alertsDialog.close() } }
+                NavButton { objectName: "overviewNav"; text: "Overview"; iconName: "home"; selected: !monitor.processesOpen && !settingsDialog.visible && !networkDialog.visible && !storageDialog.visible && !alertsDialog.visible; onClicked: { processesDrawer.close(); networkDialog.close(); settingsDialog.close(); storageDialog.close(); alertsDialog.close() } }
                 NavButton { objectName: "processesNav"; text: "Processes"; iconName: "activity"; selected: monitor.processesOpen; onClicked: root.openProcesses(false) }
-                NavButton { text: "Network"; iconName: "network"; selected: settingsDialog.visible; onClicked: root.openSettings() }
+                NavButton { objectName: "networkNav"; text: "Network"; iconName: "network"; selected: networkDialog.visible; onClicked: networkDialog.open() }
                 NavButton { objectName: "storageNav"; text: "Storage"; iconName: "storage"; selected: storageDialog.visible; onClicked: storageDialog.open() }
                 NavButton { objectName: "alertsNav"; text: "Alerts"; iconName: "alerts"; selected: alertsDialog.visible; onClicked: alertsDialog.open() }
             }
@@ -114,12 +114,19 @@ ApplicationWindow {
             night: monitor.night; animate: root.animationsActive
             cpuHistory: monitor.cpuHistory; memoryHistory: monitor.memoryHistory
             networkValue: "↓ " + root.bytes(monitor.receiveRate) + (monitor.receiveRate >= 0 ? "/s" : "")
+            storageRatio: monitor.storageTotal > 0 ? monitor.storageUsed / monitor.storageTotal : -1
+            processCount: monitor.processCount
+            alertCount: monitor.alerts.length
+            networkOutValue: "↑ " + root.bytes(monitor.sendRate) + (monitor.sendRate >= 0 ? "/s" : "")
+            receiveHistory: monitor.receiveHistory
+            onStorageClicked: storageDialog.open()
+            onAlertsClicked: alertsDialog.open()
             cpuLoad: monitor.cpu
             ramRatio: monitor.memoryTotal > 0 ? monitor.memoryUsed/monitor.memoryTotal : -1
             traffic: monitor.receiveRate >= 0 && monitor.sendRate >= 0 ? monitor.receiveRate+monitor.sendRate : -1
             onVolcanoClicked: root.openProcesses(false)
             onPortClicked: root.openProcesses(true)
-            onNetworkClicked: root.openSettings()
+            onNetworkClicked: networkDialog.open()
         }
         Rectangle {
             id: metricsPanel
@@ -178,7 +185,7 @@ ApplicationWindow {
                 }
                 Label {
                     Layout.fillWidth: true; Layout.topMargin: 4
-                    text: preferences.reducedMotion || preferences.systemReducedMotion ? "Reduced motion enabled" : "Local measurements · last 60 seconds"
+                    text: preferences.reducedMotion || preferences.systemReducedMotion ? "Reduced motion enabled" : "Local measurements · last 60 samples"
                     color: theme.secondary; font.pixelSize: 9; elide: Text.ElideRight
                 }
             }
@@ -245,6 +252,23 @@ ApplicationWindow {
         }
         ToolTip.visible: hovered && rail.width < 100
         ToolTip.text: text
+    }
+    Dialog {
+        id: networkDialog
+        objectName: "networkDialog"
+        anchors.centerIn: parent; width: Math.min(root.width-60, 560); modal: true
+        title: "Network · " + (monitor.activeInterface || "Unavailable")
+        standardButtons: Dialog.Close
+        background: Rectangle { color: theme.navy; radius: 8; border.color: theme.darkLine }
+        contentItem: ColumnLayout {
+            spacing: 16
+            Label { text: "Incoming  ↓ " + root.bytes(monitor.receiveRate) + (monitor.receiveRate >= 0 ? "/s" : ""); color: theme.ivory }
+            HistoryPlot { Layout.fillWidth: true; Layout.preferredHeight: 80; values: monitor.receiveHistory; color: theme.network; maximum: 0 }
+            Label { text: "Outgoing  ↑ " + root.bytes(monitor.sendRate) + (monitor.sendRate >= 0 ? "/s" : ""); color: theme.ivory }
+            HistoryPlot { Layout.fillWidth: true; Layout.preferredHeight: 80; values: monitor.sendHistory; color: theme.send; maximum: 0 }
+            Label { text: "Last 60 samples · about one per second · one interface"; color: theme.onDark }
+            ActionButton { text: "Choose interface…"; onClicked: { networkDialog.close(); root.openSettings() } }
+        }
     }
     Dialog {
         id: storageDialog
@@ -388,7 +412,7 @@ ApplicationWindow {
                 currentIndex: preferences.networkInterface ? choices.indexOf(preferences.networkInterface) : 0
                 onActivated: preferences.networkInterface = currentIndex === 0 ? "" : choices[currentIndex]
             }
-            Label { text: "Tracks one interface at a time. Automatic prefers the default IPv4 route, then a physical device."; color: theme.onDark; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+            Label { text: "Tracks one interface at a time. Automatic follows the lowest-metric IPv4 default route. Equal metrics keep the current interface."; color: theme.onDark; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
             Label { text: "Saved on this computer. Always private."; color: theme.onDark; font.pixelSize: 10; Layout.topMargin: 5 }
         }
         footer: Item {

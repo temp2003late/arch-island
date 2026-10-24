@@ -3,6 +3,7 @@
 #include "settings.h"
 #include "processmodel.h"
 #include "history.h"
+#include "monitor.h"
 class CoreTest : public QObject {
     Q_OBJECT
 private slots:
@@ -36,6 +37,42 @@ private slots:
         history.append(-1); QCOMPARE(history.values().last().toDouble(),-1.0);
         history.clear(); QVERIFY(history.values().isEmpty());
     }
+    void historyDiscontinuity() {
+        SampleHistory history;
+        history.appendAt(10, 1000000000LL);
+        history.appendAt(20, 2000000000LL);
+        history.appendAt(30, 5500000000LL);
+        QCOMPARE(history.values(), QVariantList({10.0, 20.0, -1.0, 30.0}));
+        history.appendAt(40, 5500000000LL);
+        QCOMPARE(history.values()[4].toDouble(), -1.0);
+        history.clear();
+        history.appendAt(50, 9000000000LL);
+        QCOMPARE(history.values(), QVariantList({50.0}));
+        for (int i=0; i<100; ++i) history.appendAt(i, 12000000000LL+i*3000000000LL);
+        QCOMPARE(history.values().size(), SampleHistory::Capacity);
+        QCOMPARE(history.values().last().toDouble(), 99.0);
+    }
+    void defaultRouteSelection() {
+        const QStringList devices{"eth0", "wlan0", "tun0", "lo"};
+        const QByteArray routes = "eth0 00000000 0100000A 0003 0 0 600 00000000 0 0 0\n"
+                                  "wlan0 00000000 0100000A 0003 0 0 100 00000000 0 0 0\n";
+        QCOMPARE(Metrics::selectNetworkInterface(devices, "eth0", routes, {"eth0"}), QString("wlan0"));
+        const auto vpn = routes + "tun0 00000000 00000000 0001 0 0 50 00000000 0 0 0\n";
+        QCOMPARE(Metrics::selectNetworkInterface(devices, "wlan0", vpn, {"eth0"}), QString("tun0"));
+        QCOMPARE(Metrics::selectNetworkInterface(devices, "tun0", routes, {"eth0"}), QString("wlan0"));
+        const QByteArray ties = "eth0 00000000 00000000 0001 0 0 100 00000000\n"
+                                "wlan0 00000000 00000000 0001 0 0 100 00000000\n";
+        QCOMPARE(Metrics::selectNetworkInterface(devices, "wlan0", ties, {}), QString("wlan0"));
+        const QByteArray invalid = "tun0 00000000 00000000 0201 0 0 0 00000000\n"
+                                   "eth0 00000000 00000000 0000 0 0 0 00000000\n"
+                                   "lo 00000000 00000000 0001 0 0 0 00000000\n"
+                                   "gone 00000000 00000000 0001 0 0 0 00000000\n"
+                                   "tun0 00000000 00000000 0001 0 0 -1 00000000\n"
+                                   "tun0 00000000 00000000 0001 0 0 0 000000FF\n";
+        QCOMPARE(Metrics::selectNetworkInterface(devices, "wlan0", invalid, {"eth0"}), QString("wlan0"));
+        QCOMPARE(Metrics::selectNetworkInterface(devices, "gone", invalid, {"eth0"}), QString("eth0"));
+        QVERIFY(Metrics::selectNetworkInterface({"lo"}, "lo", {}, {}).isEmpty());
+    }
     void cpu() {
         const auto a = Metrics::parseCpu("cpu 10 0 10 80 0 0 0 0 999 999\ncpu0 1 2 3 4\n");
         const auto b = Metrics::parseCpu("cpu 20 0 20 160 0 0 0 0 9999 9999\n");
@@ -68,9 +105,14 @@ private slots:
         Metrics::calculateProcessCpu(now,old,100); QCOMPARE(now.processes[0].cpu,100.0);
         now.processes[0].ticks += 200;
         Metrics::calculateProcessCpu(now,old,100); QCOMPARE(now.processes[0].cpu,200.0);
-        now.processes[0].cpu = -1; now.processes[0].startTime++;
+        now.processes[0].startTime++;
         Metrics::calculateProcessCpu(now,old,100); QCOMPARE(now.processes[0].cpu,-1.0);
         now.processes[0].startTime--; now.processes[0].ticks = 1;
+        Metrics::calculateProcessCpu(now,old,100); QCOMPARE(now.processes[0].cpu,-1.0);
+        now.processes[0].cpu = 80;
+        Metrics::calculateProcessCpu(now,old,0); QCOMPARE(now.processes[0].cpu,-1.0);
+        now.processes[0].cpu = 80;
+        now.timeNs = old.timeNs;
         Metrics::calculateProcessCpu(now,old,100); QCOMPARE(now.processes[0].cpu,-1.0);
         now.processes.clear(); Metrics::calculateProcessCpu(now,old,100); QVERIFY(now.processes.isEmpty());
     }
@@ -99,6 +141,60 @@ private slots:
         QCOMPARE(sampler.sample("wlan0",Metrics::Network{1,1},7000000000).received,-1.0);
         QCOMPARE(sampler.sample("wlan0",Metrics::Network{3,4},8000000000).received,2.0);
         QCOMPARE(sampler.sample("wlan0",Metrics::Network{4,5},8000000000).received,-1.0);
+    }
+    void networkDirectionsResetIndependently() {
+        Metrics::NetworkSampler sampler;
+        sampler.sample("eth0", Metrics::Network{100,200}, 1000000000LL);
+        auto sample = sampler.sample("eth0", Metrics::Network{50,300}, 2000000000LL);
+        QCOMPARE(sample.received, -1.0);
+        QCOMPARE(sample.sent, 100.0);
+        sample = sampler.sample("eth0", Metrics::Network{100,10}, 3000000000LL);
+        QCOMPARE(sample.received, 50.0);
+        QCOMPARE(sample.sent, -1.0);
+        sample = sampler.sample("eth0", Metrics::Network{200,210}, 5500000000LL);
+        QCOMPARE(sample.received, 40.0);
+        QCOMPARE(sample.sent, 80.0);
+    }
+    void monitoringAvailability() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        Settings settings(dir.filePath("monitor.ini"));
+        settings.setNetworkInterface("arch-island-nonexistent-test-interface");
+        Monitor monitor(&settings);
+        QCOMPARE(monitor.cpu(), -1.0);
+        QVERIFY(monitor.alerts().contains("CPU waiting for a valid interval"));
+        QCOMPARE(monitor.receiveRate(), -1.0);
+        QVERIFY(monitor.alerts().contains("Network unavailable"));
+        QTRY_VERIFY_WITH_TIMEOUT(monitor.cpu() >= 0, 4000);
+        QVERIFY(!monitor.alerts().contains("CPU waiting for a valid interval"));
+        QCOMPARE(monitor.activeInterface(), settings.networkInterface());
+        QCOMPARE(monitor.receiveHistory().last().toDouble(), -1.0);
+        // Loopback exists even on an offline host. Exercise the sampler's first
+        // interval after a switch without depending on external connectivity.
+        settings.setNetworkInterface("lo");
+        QTRY_COMPARE_WITH_TIMEOUT(monitor.activeInterface(), QString("lo"), 4000);
+        QCOMPARE(monitor.receiveRate(), -1.0);
+        QCOMPARE(monitor.receiveHistory().size(), 1);
+        QVERIFY(monitor.alerts().contains("Network receive waiting for a valid interval"));
+        QTRY_VERIFY_WITH_TIMEOUT(monitor.receiveRate() >= 0, 4000);
+        QVERIFY(!monitor.alerts().contains("Network receive waiting for a valid interval"));
+        QVERIFY(!monitor.alerts().contains("Network send waiting for a valid interval"));
+    }
+    void stalledMonitoringBreaksHistory() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        Settings settings(dir.filePath("stall.ini"));
+        Monitor monitor(&settings);
+        QSignalSpy sampled(&monitor, &Monitor::sampled);
+        QTRY_VERIFY_WITH_TIMEOUT(sampled.size() >= 1, 4000);
+        const auto before = monitor.cpuHistory().size();
+        QTest::qSleep(2300); // Deliberately block the GUI/event thread.
+        QCoreApplication::processEvents();
+        const auto history = monitor.cpuHistory();
+        QCOMPARE(history.size(), before + 2);
+        QCOMPARE(history[history.size()-2].toDouble(), -1.0);
+        QVERIFY(history.last().toDouble() >= 0);
+        QCOMPARE(monitor.memoryHistory()[history.size()-2].toDouble(), -1.0);
     }
     void readErrors() {
         QTemporaryDir dir; QVERIFY(dir.isValid());

@@ -106,3 +106,12 @@ Implemented the header, expanded responsive navigation, five metric cards, scene
 Validation: Release build succeeded; all 12 core and 11 offscreen GUI cases passed. After correcting overlapping detail text at 800×640, `islandInteraction` passed again on offscreen software and Wayland hardware rendering. Inspected full-size daytime and 800×640 captures. No QML engine warnings were collected. Wayland still emits platform text-input focus warnings, and the core process-model test emits its existing invalid-type warning. Hardware scene motion and stable roof checks passed. `docs/arch-island.png` is the daytime Wayland capture.
 
 The reference's new mountain architecture, light trails and exact artwork are not implemented. Existing day/night panoramas, spatial masks, shaders and animated objects are preserved. Alerts only report unavailable monitored data and root usage >=90%; Storage Used is filesystem occupancy, not SMART health. Footer shows the actual network interface instead of an unmeasured active-user count.
+
+## Beacon scene and interactions — 2026-10-24
+
+- Rebuilt the native application and embedded Beacon day/night art with CMake/Ninja, Qt 6.12.0.
+- Full `ctest --test-dir build --output-on-failure`: 2/2 suites passed (17.61 s).
+- Expanded GUI coverage checks all five scene badges stay within the viewport, including the 504×486 scene at the minimum application size. Real clicks exercise Storage, Alerts and Network from both navigation and scene badges. The process count is checked against live availability.
+- Wayland hardware `islandInteraction`: passed (12.43 s), including water/town animation, stable roof pixels, pause/resume, process drawer, settings and resizing. No QML engine warnings; the existing Wayland text-input focus warnings remain.
+- Inspected day/night and 800×640 screenshots. The updated README image is an actual offscreen/software capture, not the reference mockup.
+- This update adapts the reference artwork to the existing shoreline geometry. Fine details can vary across the generated lighting variants. Storage remains filesystem occupancy; no SMART health or active-session count is claimed.

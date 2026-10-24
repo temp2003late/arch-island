@@ -1,5 +1,6 @@
 #pragma once
 #include <QString>
+#include <QStringList>
 #include <QMap>
 #include <QVector>
 #include <optional>
@@ -32,6 +33,8 @@ std::optional<Cpu> parseCpu(const QByteArray &text);
 std::optional<double> cpuUsage(const Cpu &before, const Cpu &after);
 std::optional<Memory> parseMemory(const QByteArray &text);
 QMap<QString, Network> parseNetwork(const QByteArray &text);
+QString selectNetworkInterface(const QStringList &available, const QString &current,
+                               const QByteArray &routes, const QStringList &physical);
 std::optional<double> rate(quint64 before, quint64 after, qint64 intervalNs);
 std::optional<Process> parseProcess(const QByteArray &text, quint64 pageSize);
 void calculateProcessCpu(ProcessSnapshot &current, const ProcessSnapshot &previous, long ticksPerSecond);

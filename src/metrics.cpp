@@ -72,6 +72,32 @@ QMap<QString, Network> parseNetwork(const QByteArray &text) {
     }
     return result;
 }
+QString selectNetworkInterface(const QStringList &available, const QString &current,
+                               const QByteArray &routes, const QStringList &physical) {
+    QString selected;
+    quint64 bestMetric = std::numeric_limits<quint64>::max();
+    for (const auto &line : routes.split('\n')) {
+        const auto fields = line.simplified().split(' ');
+        if (fields.size() < 8 || fields[1] != "00000000" || fields[7] != "00000000") continue;
+        const auto name = QString::fromUtf8(fields[0]);
+        if (name == "lo" || !available.contains(name)) continue;
+        bool validFlags = false;
+        const auto flags = fields[3].toUInt(&validFlags, 16);
+        const auto metric = number(fields[6]);
+        if (!validFlags || !(flags & 0x1) || (flags & 0x200) || !metric) continue;
+        // Follow a better default route, retaining the current device on ties.
+        if (selected.isEmpty() || *metric < bestMetric || (*metric == bestMetric && name == current)) {
+            selected = name;
+            bestMetric = *metric;
+        }
+    }
+    if (!selected.isEmpty()) return selected;
+    if (current != "lo" && available.contains(current)) return current;
+    for (const auto &name : physical)
+        if (name != "lo" && available.contains(name)) return name;
+    for (const auto &name : available) if (name != "lo") return name;
+    return {};
+}
 std::optional<double> rate(quint64 a, quint64 b, qint64 ns) {
     if (ns <= 0 || b < a) return std::nullopt;
     return double(b - a) / (double(ns) / 1e9);
@@ -97,6 +123,7 @@ std::optional<Process> parseProcess(const QByteArray &text, quint64 pageSize) {
     return Process{qint64(*pid), QString::fromUtf8(text.mid(left+1, right-left-1)), *start, *user+*system, *rss*pageSize, -1};
 }
 void calculateProcessCpu(ProcessSnapshot &now, const ProcessSnapshot &old, long hz) {
+    for (auto &p : now.processes) p.cpu = -1;
     if (!old.available || !now.available || hz <= 0 || now.timeNs <= old.timeNs) return;
     QMap<qint64, Process> map;
     for (const auto &p : old.processes) map.insert(p.pid, p);

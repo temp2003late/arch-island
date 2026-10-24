@@ -45,3 +45,17 @@ The ivory header pairs the Pixel Sail mark and Arthelm wordmark with a quiet sys
 ### Beacon interface reference
 
 `arthelm_beacon.png` is the supplied UI reference for the Arthelm Beacon layout. Its artwork is not embedded in the executable. The implementation adapts its ivory panels, navy navigation, brass accents, serif brand heading, inline metric sparklines and light footer into native QML controls. The original animated island panoramas remain in use; the reference landscape would require new aligned artwork and animation masks. Filesystem occupancy replaces the misleading “Storage Health” caption; no fabricated process count, active-user count or health status is displayed.
+
+## Beacon scene completion · 2026-10-24
+
+Built-in imagegen produced `assets/art/beacon-day.png` and `assets/art/beacon-night.png`. Original panoramas remain available as source material; the executable embeds the two Beacon variants. The new artwork adapts the reference residence while preserving the existing shoreline and village layout. QML renders all labels, connectors, signal-route lights and interactions. The summit is excluded from surface displacement; volcanic effects have been removed. The night shader uses the new moon position and no longer applies the old tower registration offset.
+
+Day prompt (inputs: original daylight panorama as edit target, `arthelm_beacon.png` as style reference):
+
+> Use case: precise-object-edit. Create project asset beacon-day.png. Image 1 is the edit target panorama; image 2 is style reference only. Preserve image 1 exact 2:1 framing and spatial positions of all shorelines, docks, lighthouse, village, palms, ocean. Replace ONLY the erupting volcano and its lava/smoke in upper left-center with a rugged rocky peak topped by an elegant warm-lit Mediterranean stone residence like the peak residence in image 2. Absolutely no volcano, lava, smoke plume. Golden late-afternoon lighting. No UI, text, badges, routes, boats or frames. Keep all existing buildings elsewhere pixel aligned. Return full panoramic artwork, not application mockup.
+
+Night prompt (input: generated Beacon daylight panorama):
+
+> Use case: lighting-weather. Edit target: supplied panorama. Create its exact aligned nighttime counterpart for a live application crossfade. Change ONLY illumination and sky to calm deep blue moonlight, subtle stars and warm lit windows, brightest lighthouse lantern and summit residence windows. Preserve every pixel position of ALL architecture, summit residence, cliffs, palms, docks, horizon and ocean. Same 2:1 full panorama framing and dimensions. No volcano, lava, smoke, boats, UI, labels, light routes, text, or border. Keep architecture crisp and sea readable, cinematic refined nighttime scene.
+
+The prompts request alignment; generated textures can differ in fine details. The shared geometric layout and transition are visually inspected, not claimed to be pixel-identical. Existing masks remain conservative around the original shoreline, with an explicit stationary guard around the new summit.

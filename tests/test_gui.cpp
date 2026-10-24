@@ -174,7 +174,7 @@ private slots:
         auto *scene = qobject_cast<QQuickItem *>(object.data());
         QVERIFY(scene);
         scene->setProperty("animate", false);
-        for (const QSize size : {QSize(525, 510), QSize(1547, 831), QSize(2400, 900)}) {
+        for (const QSize size : {QSize(504, 486), QSize(525, 510), QSize(1547, 831), QSize(2400, 900)}) {
             scene->setSize(size);
             for (const auto *name : {"dayArtwork", "nightArtwork"}) {
                 auto *art = scene->findChild<QQuickItem *>(name);
@@ -188,7 +188,7 @@ private slots:
             }
             for (int step = 0; step < 24; ++step) {
                 scene->setProperty("sailingPhase", step * 3.141592653589793 / 12);
-                for (const auto *name : {"cpuSceneTag", "ramSceneTag", "networkSceneTag"}) {
+                for (const auto *name : {"cpuSceneTag", "ramSceneTag", "networkSceneTag", "storageSceneTag", "alertsSceneTag"}) {
                     auto *tag = scene->findChild<QQuickItem *>(name);
                     QVERIFY(tag);
                     const auto bounds = tag->mapRectToItem(scene, tag->boundingRect());
@@ -261,13 +261,16 @@ private slots:
         QVERIFY(QTest::qWaitForWindowExposed(window));
         QTRY_VERIFY_WITH_TIMEOUT(monitor.cpu() >= 0, 4000);
         QVERIFY(monitor.memoryTotal() > 0);
+        QVERIFY(monitor.processCount() > 0);
         QVERIFY(monitor.storageTotal() > 0);
         QVERIFY(monitor.storageUsed() >= 0);
         QVERIFY(monitor.storageUsed() <= monitor.storageTotal());
         QVERIFY(!monitor.storageFormat().isEmpty());
         QVERIFY(monitor.uptime() >= 0);
         QVERIFY(!monitor.hostName().isEmpty());
-        for (const auto &entry : {qMakePair("storageNav", "storageDialog"), qMakePair("alertsNav", "alertsDialog")}) {
+        for (const auto &entry : {qMakePair("storageNav", "storageDialog"), qMakePair("alertsNav", "alertsDialog"), qMakePair("networkNav", "networkDialog"),
+                                  qMakePair("storageSceneTag", "storageDialog"), qMakePair("alertsSceneTag", "alertsDialog"),
+                                  qMakePair("networkSceneTag", "networkDialog")}) {
             auto *nav = window->findChild<QQuickItem *>(entry.first);
             auto *dialog = window->findChild<QObject *>(entry.second);
             QVERIFY(nav); QVERIFY(dialog);
@@ -301,8 +304,7 @@ private slots:
             const qreal dpr = window->devicePixelRatio();
             const QRect town = QRectF(art->mapToScene(QPointF(650, 340))*dpr,
                                       art->mapToScene(QPointF(1000, 500))*dpr).toAlignedRect();
-            // Isolate the animation clock from live CPU samples: the lava's heat
-            // changes with telemetry even while decorative motion is paused.
+            // Keep the scene independent of live CPU samples during pixel checks.
             scene->setProperty("animate",false);
             QQmlExpression freeze(engine.rootContext(),scene,"cpuLoad = 50");
             freeze.evaluate();
