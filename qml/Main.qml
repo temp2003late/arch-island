@@ -6,7 +6,7 @@ import QtQuick.Window
 import ArchIsland 1.0
 ApplicationWindow {
     id: root
-    Theme { id: theme }
+    Theme { id: theme; night: monitor.night; darkness: islandScene.lightingBlend }
     objectName: "mainWindow"
     visible: true
     width: 1600; height: 900
@@ -25,6 +25,9 @@ ApplicationWindow {
     palette.highlight: theme.brass
     palette.highlightedText: theme.deep
     palette.mid: theme.darkLine
+    palette.toolTipBase: theme.panel
+    palette.toolTipText: theme.text
+    readonly property real themeKick: islandScene.transitionGlitch * (islandScene.transitionProgress < .5 ? 1.5 : -1)
     property bool animationsActive: !preferences.reducedMotion && !preferences.systemReducedMotion && visibility !== Window.Minimized && visible
     function bytes(value) {
         if (value < 0) return "Unavailable"
@@ -52,36 +55,38 @@ ApplicationWindow {
     function openSettings() { settingsDialog.open() }
     Rectangle {
         id: header
+        objectName: "headerPanel"
+        transform: Translate { x: root.themeKick }
         anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
         height: 88
-        color: theme.ivory
+        color: theme.panel
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line }
         RowLayout {
             anchors.fill: parent; anchors.leftMargin: 20; anchors.rightMargin: 13
             spacing: 13
-            Image { source: "qrc:/assets/brand/arthelm.webp"; sourceSize: Qt.size(104,104); Layout.preferredWidth: 52; Layout.preferredHeight: 52 }
+            BrandMark { objectName: "headerBrandMark"; lightInk: theme.darkness; Layout.preferredWidth: 52; Layout.preferredHeight: 52 }
             Rectangle { implicitWidth: 1; implicitHeight: 38; color: theme.line }
-            Label { text: "Arthelm Beacon"; color: theme.navy; font.family: displayFont.name; font.pixelSize: root.width < 1000 ? 24 : 32 }
+            Label { text: "Arthelm Beacon"; color: theme.text; font.family: displayFont.name; font.pixelSize: root.width < 1000 ? 24 : 32 }
             Label { visible: root.width > 1300; text: "LINUX SYSTEM MONITOR"; color: theme.secondary; font.pixelSize: 9; font.letterSpacing: 2; leftPadding: 12 }
             Rectangle {
-                visible: root.width > 1100; implicitWidth: 130; implicitHeight: 26; radius: 13
+                visible: root.width > 1100; implicitWidth: 90; implicitHeight: 26; radius: 13
                 color: "transparent"; border.color: theme.brass
-                Label { anchors.centerIn: parent; text: "●  In Development"; color: theme.brassMuted; font.pixelSize: 10 }
+                Label { anchors.centerIn: parent; text: "v" + (Qt.application.version || "0.1.0"); color: theme.brassMuted; font.pixelSize: 10 }
             }
             Item { Layout.fillWidth: true }
             Rectangle { implicitWidth: 7; implicitHeight: 7; radius: 4; color: monitor.cpu >= 0 ? theme.network : theme.brassMuted }
-            Label { text: monitor.cpu >= 0 ? "Live" : "Sampling"; color: theme.navy; font.pixelSize: 12 }
+            Label { text: monitor.cpu >= 0 ? "Live" : "Sampling"; color: theme.text; font.pixelSize: 12 }
             Label { visible: root.width > 960; text: "·  " + (monitor.activeInterface || "No network"); color: theme.secondary; font.pixelSize: 11; Layout.maximumWidth: 180; elide: Text.ElideRight }
             Rectangle { implicitWidth: 1; implicitHeight: 22; color: theme.darkLine; Layout.leftMargin: 10; Layout.rightMargin: 5 }
             IconButton {
-                light: true; text: monitor.night ? "Switch to daytime" : "Switch to nighttime"
+                light: true; night: monitor.night; darkness: theme.darkness; text: monitor.night ? "Switch to daytime" : "Switch to nighttime"
                 iconName: monitor.night ? "moon" : "sun"
                 onClicked: preferences.mode = monitor.night ? "day" : "night"
             }
-            IconButton { light: true; objectName: "settingsButton"; text: "Settings"; iconName: "settings"; onClicked: root.openSettings() }
-            IconButton { light: true; text: "Minimize"; iconName: "minimize"; onClicked: root.showMinimized() }
-            IconButton { light: true; text: root.visibility === Window.Maximized ? "Restore window" : "Maximize"; iconName: "maximize"; onClicked: root.visibility === Window.Maximized ? root.showNormal() : root.showMaximized() }
-            IconButton { light: true; text: "Close Arthelm Beacon"; iconName: "close"; onClicked: root.close() }
+            IconButton { light: true; night: monitor.night; darkness: theme.darkness; objectName: "settingsButton"; text: "Settings"; iconName: "settings"; onClicked: root.openSettings() }
+            IconButton { light: true; night: monitor.night; darkness: theme.darkness; text: "Minimize"; iconName: "minimize"; onClicked: root.showMinimized() }
+            IconButton { light: true; night: monitor.night; darkness: theme.darkness; text: root.visibility === Window.Maximized ? "Restore window" : "Maximize"; iconName: "maximize"; onClicked: root.visibility === Window.Maximized ? root.showNormal() : root.showMaximized() }
+            IconButton { light: true; night: monitor.night; darkness: theme.darkness; text: "Close Arthelm Beacon"; iconName: "close"; onClicked: root.close() }
         }
     }
     Item {
@@ -103,7 +108,7 @@ ApplicationWindow {
                 visible: rail.width > 100
                 anchors.bottom: parent.bottom; anchors.bottomMargin: 24; anchors.left: parent.left; anchors.leftMargin: 22; spacing: 12
                 Rectangle { width: 130; height: 1; color: theme.darkLine }
-                Image { source: "qrc:/assets/brand/arthelm.webp"; width: 44; height: 44; opacity: .75 }
+                BrandMark { objectName: "railBrandMark"; lightInk: 1; width: 44; height: 44; opacity: .75 }
                 Label { text: "Technology.\nAt your helm."; color: theme.onDark; font.pixelSize: 12; lineHeight: 1.3 }
             }
         }
@@ -130,18 +135,21 @@ ApplicationWindow {
         }
         Rectangle {
             id: metricsPanel
+            objectName: "metricsPanel"
+            transform: Translate { x: -root.themeKick }
             anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.right: parent.right
             width: root.width < 1050 ? 238 : 310
-            color: theme.ivory
+            color: theme.panel
             Rectangle { width: 1; height: parent.height; color: theme.line }
             ColumnLayout {
                 anchors.fill: parent; anchors.margins: root.width < 1050 ? 12 : 20; spacing: 10
                 RowLayout {
                     Layout.fillWidth: true; Layout.bottomMargin: 4
-                    Label { text: "System Metrics"; color: theme.navy; font.family: displayFont.name; font.pixelSize: 22; Layout.fillWidth: true }
+                    Label { text: "System Metrics"; color: theme.text; font.family: displayFont.name; font.pixelSize: 22; Layout.fillWidth: true }
                     Label { text: "1s"; color: theme.secondary; font.pixelSize: 9 }
                 }
                 MetricCard {
+                    night: monitor.night; darkness: theme.darkness
                     objectName: "cpuCard"
                     Layout.fillWidth: true; Layout.fillHeight: true
                     caption: "CPU"; iconName: "cpu"; accent: theme.cpu
@@ -151,6 +159,7 @@ ApplicationWindow {
                     history: monitor.cpuHistory
                 }
                 MetricCard {
+                    night: monitor.night; darkness: theme.darkness
                     Layout.fillWidth: true; Layout.fillHeight: true
                     caption: "RAM"; iconName: "memory"; accent: theme.memory
                     value: root.metricNumber(monitor.memoryUsed)
@@ -160,6 +169,7 @@ ApplicationWindow {
                     history: monitor.memoryHistory
                 }
                 MetricCard {
+                    night: monitor.night; darkness: theme.darkness
                     Layout.fillWidth: true; Layout.fillHeight: true
                     caption: "Network In"; iconName: "download"; accent: theme.network
                     value: root.metricNumber(monitor.receiveRate)
@@ -168,6 +178,7 @@ ApplicationWindow {
                     history: monitor.receiveHistory; maximum: 0
                 }
                 MetricCard {
+                    night: monitor.night; darkness: theme.darkness
                     Layout.fillWidth: true; Layout.fillHeight: true
                     caption: "Network Out"; iconName: "upload"; accent: theme.send
                     value: root.metricNumber(monitor.sendRate)
@@ -176,6 +187,7 @@ ApplicationWindow {
                     history: monitor.sendHistory; maximum: 0
                 }
                 MetricCard {
+                    night: monitor.night; darkness: theme.darkness
                     objectName: "storageCard"
                     Layout.fillWidth: true; Layout.fillHeight: true
                     caption: "Storage Used"; iconName: "storage"; accent: theme.brassMuted; bar: true
@@ -193,16 +205,18 @@ ApplicationWindow {
     }
     Rectangle {
         id: footer
+        objectName: "footerPanel"
+        transform: Translate { x: -root.themeKick }
         anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
         height: root.width < 1000 ? 66 : 80
-        color: theme.ivory
+        color: theme.panel
         Rectangle { width: parent.width; height: 1; color: theme.line }
         RowLayout {
             anchors.fill: parent; anchors.leftMargin: 25; anchors.rightMargin: 25
             spacing: root.width < 1000 ? 16 : 30
             ColumnLayout {
                 Layout.preferredWidth: root.width < 1000 ? 205 : 350; spacing: 3
-                Label { text: "Your system, charted."; font.family: displayFont.name; font.pixelSize: root.width < 1000 ? 19 : 26; color: theme.navy }
+                Label { text: "Your system, charted."; font.family: displayFont.name; font.pixelSize: root.width < 1000 ? 19 : 26; color: theme.text }
                 Label { text: "Live signals. Clear direction. Full control."; color: theme.secondary; font.pixelSize: 11; visible: root.width > 1000 }
             }
             Rectangle { implicitWidth: 1; implicitHeight: 38; color: theme.line }
@@ -217,7 +231,38 @@ ApplicationWindow {
             Item {
                 visible: root.width > 1400; Layout.preferredWidth: 170; Layout.preferredHeight: 44
                 HistoryPlot { anchors.fill: parent; values: monitor.cpuHistory; color: theme.memory; maximum: 100 }
-                Label { anchors.right: parent.right; text: "Signals in view."; color: theme.navy; font.pixelSize: 10 }
+                Label { anchors.right: parent.right; text: "Signals in view."; color: theme.text; font.pixelSize: 10 }
+            }
+        }
+    }
+    // Brief color-separated seams and thin scan fragments; no full-frame flash.
+    Item {
+        anchors.fill: parent
+        z: 100
+        enabled: false
+        visible: islandScene.transitionGlitch > 0
+        opacity: .40
+        Rectangle {
+            x: header.x; y: header.height-2; width: header.width*.37; height: 1
+            color: "#57d8db"
+        }
+        Rectangle {
+            x: metricsPanel.x-root.themeKick-1; y: header.height+body.height*.17
+            width: 2; height: body.height*.23; color: "#57d8db"
+        }
+        Rectangle {
+            x: metricsPanel.x+2; y: header.height+body.height*.18
+            width: 1; height: body.height*.18; color: "#d278a5"
+        }
+        Repeater {
+            model: 3
+            Rectangle {
+                required property int index
+                x: rail.width + (index*137 + islandScene.transitionProgress*240) % Math.max(1,islandScene.width*.65)
+                y: header.height + body.height*(.24+index*.21)
+                width: Math.min(islandScene.width*.17,180); height: 1
+                color: index%2 ? "#d278a5" : "#57d8db"
+                opacity: .6
             }
         }
     }
@@ -226,10 +271,10 @@ ApplicationWindow {
         property string label
         property string value
         spacing: 14
-        IconImage { source: "qrc:/assets/icons/"+parent.iconName+".svg"; sourceSize: Qt.size(48,48); Layout.preferredWidth: 24; Layout.preferredHeight: 24; color: theme.navy }
+        IconImage { source: "qrc:/assets/icons/"+parent.iconName+".svg"; sourceSize: Qt.size(48,48); Layout.preferredWidth: 24; Layout.preferredHeight: 24; color: theme.text }
         ColumnLayout {
             Layout.fillWidth: true; spacing: 5
-            Label { text: parent.parent.label; color: theme.navy; font.pixelSize: 11; Layout.fillWidth: true; elide: Text.ElideRight; textFormat: Text.PlainText }
+            Label { text: parent.parent.label; color: theme.text; font.pixelSize: 11; Layout.fillWidth: true; elide: Text.ElideRight; textFormat: Text.PlainText }
             Label { text: parent.parent.value; color: theme.secondary; font.pixelSize: 11; Layout.fillWidth: true; elide: Text.ElideRight; textFormat: Text.PlainText }
         }
     }

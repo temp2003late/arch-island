@@ -9,6 +9,7 @@ pkgbase = arch-island-git
 	makedepends = git
 	makedepends = cmake
 	makedepends = ninja
+	makedepends = qt6-shadertools
 	depends = qt6-base
 	depends = qt6-declarative
 	depends = qt6-svg

@@ -6,6 +6,29 @@ import ArchIsland 1.0
 Item {
     id: island
     property bool night: false
+    property real transitionProgress: night ? 1 : 0
+    // Irregular plateaus, short jumps and two small signal rebounds.
+    // A single reversible driver keeps the image and interface in lockstep.
+    function digitalBlend(progress) {
+        if (!animate) return progress
+        const times = [0, .10, .14, .27, .30, .34, .45, .50, .58, .62, .76, .80, .90, .94, 1]
+        const levels = [0, 0, .18, .18, .13, .13, .48, .48, .44, .44, .80, .80, .92, .92, 1]
+        for (let i = 1; i < times.length; ++i) {
+            if (progress <= times[i]) {
+                const t = (progress-times[i-1])/(times[i]-times[i-1])
+                return levels[i-1] + (levels[i]-levels[i-1])*Math.max(0,t)
+            }
+        }
+        return 1
+    }
+    readonly property real lightingBlend: digitalBlend(transitionProgress)
+    readonly property real transitionGlitch: animate && (
+        (transitionProgress > .10 && transitionProgress < .16) ||
+        (transitionProgress > .45 && transitionProgress < .50) ||
+        (transitionProgress > .76 && transitionProgress < .80)) ? 1 : 0
+    Behavior on transitionProgress {
+        NumberAnimation { duration: 1000; easing.type: Easing.Linear }
+    }
     property bool animate: true
     property real cpuLoad: -1
     property real ramRatio: -1
@@ -49,14 +72,14 @@ Item {
     }
     Item {
         id: world
-        width: 1600; height: 1000
+        width: 1600; height: 900
         transformOrigin: Item.TopLeft
         x: (island.width-width*scale)/2
-        // Keep the moon inside the crop even in an ultrawide window.
-        property real visibleTop: Math.min(80, Math.max(0, (height-island.height/scale)/2))
+        // Preserve the summit and lighthouse when a wide viewport crops the sky.
+        property real visibleTop: Math.min(40, Math.max(0, (height-island.height/scale)/2))
         y: -visibleTop*scale
         // One complete panorama, with all effects positioned in the same world space.
-        scale: Math.max(island.width/2000, island.height/1000)
+        scale: Math.max(island.width/1600, island.height/900)
         function tagX(preferred, pixels) {
             const left = (width - island.width/scale)/2
             return Math.max(left + 12/scale, Math.min(preferred, left + (island.width-pixels-12)/scale))
@@ -73,24 +96,23 @@ Item {
         Image {
             id: dayArt
             objectName: "dayArtwork"
-            x: -200; y: 0; width: 2000; height: 1000
-            source: "qrc:/assets/art/beacon-day.png"
+            x: 0; y: 0; width: 1600; height: 900
+            source: "qrc:/assets/art/island.png"
             smooth: true; mipmap: true
             visible: GraphicsInfo.api === GraphicsInfo.Software
         }
         Image {
             id: nightArt
             objectName: "nightArtwork"
-            x: -200; y: 0; width: 2000; height: 1000
-            source: "qrc:/assets/art/beacon-night.png"
-            opacity: island.night ? 1 : 0
+            x: 0; y: 0; width: 1600; height: 900
+            source: "qrc:/assets/art/island_night.png"
+            opacity: island.lightingBlend
             smooth: true; mipmap: true
             visible: GraphicsInfo.api === GraphicsInfo.Software
-            Behavior on opacity { NumberAnimation { duration: 4000; easing.type: Easing.InOutSine } }
         }
         ShaderEffect {
             objectName: "livingSurface"
-            x: -200; y: 0; width: 2000; height: 1000
+            x: 0; y: 0; width: 1600; height: 900
             visible: GraphicsInfo.api !== GraphicsInfo.Software
             property var source: dayArt
             property var nightSource: nightArt
@@ -101,15 +123,15 @@ Item {
         }
         WorldLife {
             objectName: "worldLife"
-            width: 1600; height: 1000
+            width: 1600; height: 900
             sceneTime: island.sceneTime
             darkness: nightArt.opacity
-            textureSize: Qt.size(Math.max(1, Math.min(1600, width*world.scale)), Math.max(1, Math.min(1000, height*world.scale)))
+            textureSize: Qt.size(Math.max(1, Math.min(1600, width*world.scale)), Math.max(1, Math.min(900, height*world.scale)))
         }
         // Beam points out to open water; negative projection is occluded by the
         // tower/island. Its room rotates throughout daytime too.
         Image {
-            x: 1178; y: 269; width: 340; height: 30
+            x: 1392; y: 172; width: 340; height: 30
             source: "qrc:/assets/beam.svg"; sourceSize: Qt.size(680,60)
             property real azimuth: island.sceneTime*.137
             opacity: (0.13+nightArt.opacity*.25)*Math.pow(Math.max(0,Math.cos(azimuth)),2)
@@ -118,7 +140,7 @@ Item {
             rotation: 4+9*Math.sin(azimuth)
         }
         Image {
-            x: 1169; y: 264; width: 21; height: 18
+            x: 1382; y: 164; width: 21; height: 18
             source: "qrc:/assets/glow.svg"
             opacity: (.3+.3*nightArt.opacity)*(.65+.35*Math.cos(island.sceneTime*.137))
         }
@@ -126,17 +148,19 @@ Item {
         Item {
             id: boat
             objectName: "sailingBoat"
-            x: Math.max(330, (world.width-island.width/world.scale)/2 + 20/world.scale) + 2.2*Math.sin(island.sceneTime*.219) + .7*Math.sin(island.sceneTime*.373+1.4)
-            property real routeCenterY: Math.min(720, world.visibleTop + island.height/world.scale - height - 70/world.scale)
+            x: 780 + 2.2*Math.sin(island.sceneTime*.219) + .7*Math.sin(island.sceneTime*.373+1.4)
+            property real routeCenterY: Math.min(610, world.visibleTop + island.height/world.scale - height - 70/world.scale)
             y: routeCenterY + 1.3*Math.sin(island.sceneTime*.713) + .55*Math.sin(island.sceneTime*1.137+2.1)
-            width: 190; height: 190
-            property real heading: -18 + .7*Math.sin(island.sceneTime*.173)
-            Sailboat {
+            width: 160; height: 160
+            rotation: .45*Math.sin(island.sceneTime*.713)
+            transformOrigin: Item.Bottom
+            Image {
                 objectName: "sailboatArtwork"
                 anchors.fill: parent
-                heading: boat.heading
-                sceneTime: island.sceneTime
-                darkness: nightArt.opacity
+                source: "qrc:/assets/art/sailboat.png"
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+                mipmap: true
             }
         }
         Repeater {
@@ -153,7 +177,7 @@ Item {
         Button {
             id: volcanoButton
             objectName: "volcanoButton"
-            x: 453; y: 141; width: 216; height: 173
+            x: 375; y: 65; width: 230; height: 130
             text: "Open CPU processes"
             Accessible.name: text
             hoverEnabled: true
@@ -166,7 +190,7 @@ Item {
         Button {
             id: portButton
             objectName: "portButton"
-            x: 985; y: 625; width: 340; height: 155
+            x: 1020; y: 470; width: 340; height: 125
             text: "Open memory processes"
             Accessible.name: text
             hoverEnabled: true
@@ -181,11 +205,11 @@ Item {
             anchors.fill: parent
             ShapePath {
                 strokeColor: "#b5e7c48b"; strokeWidth: 1.6; fillColor: "transparent"
-                startX: 560; startY: 230
-                PathCubic { x: 380; y: 520; control1X: 760; control1Y: 340; control2X: 250; control2Y: 390 }
-                PathCubic { x: 830; y: 515; control1X: 420; control1Y: 640; control2X: 740; control2Y: 390 }
-                PathCubic { x: 1160; y: 650; control1X: 940; control1Y: 620; control2X: 1040; control2Y: 570 }
-                PathCubic { x: 360; y: 800; control1X: 1500; control1Y: 950; control2X: 670; control2Y: 900 }
+                startX: 475; startY: 155
+                PathCubic { x: 355; y: 460; control1X: 670; control1Y: 245; control2X: 260; control2Y: 345 }
+                PathCubic { x: 865; y: 355; control1X: 510; control1Y: 530; control2X: 730; control2Y: 320 }
+                PathCubic { x: 1190; y: 540; control1X: 950; control1Y: 445; control2X: 1090; control2Y: 435 }
+                PathCubic { x: 700; y: 740; control1X: 1450; control1Y: 760; control2X: 980; control2Y: 820 }
             }
         }
         Repeater {
@@ -194,10 +218,10 @@ Item {
             Rectangle {
                 required property int index
                 property var curves: [
-                    [560,230,760,340,250,390,380,520],
-                    [380,520,420,640,740,390,830,515],
-                    [830,515,940,620,1040,570,1160,650],
-                    [1160,650,1500,950,670,900,360,800]]
+                    [475,155,670,245,260,345,355,460],
+                    [355,460,510,530,730,320,865,355],
+                    [865,355,950,445,1090,435,1190,540],
+                    [1190,540,1450,760,980,820,700,740]]
                 property real progress: ((index / 36 + island.sceneTime * .003) % 1) * 4
                 property var curve: curves[Math.floor(progress)]
                 property real t: progress % 1
@@ -211,7 +235,7 @@ Item {
             }
         }
         Repeater {
-            model: [{x:560,y:230},{x:380,y:520},{x:830,y:515},{x:1160,y:650},{x:1178,y:280}]
+            model: [{x:475,y:155},{x:355,y:460},{x:865,y:355},{x:1190,y:540},{x:1392,y:180}]
             Item {
                 required property var modelData
                 x: modelData.x; y: modelData.y
@@ -222,9 +246,9 @@ Item {
 
     }
     Repeater {
-        model: [ {tag:cpuTag,x:560,y:230}, {tag:storageTag,x:380,y:520},
-                 {tag:processTag,x:830,y:515}, {tag:alertsTag,x:1178,y:280},
-                 {tag:networkTag,x:1160,y:650} ]
+        model: [ {tag:cpuTag,x:475,y:155}, {tag:storageTag,x:355,y:460},
+                 {tag:processTag,x:865,y:355}, {tag:alertsTag,x:1392,y:180},
+                 {tag:networkTag,x:1190,y:540} ]
         Shape {
             required property var modelData
             anchors.fill: parent
@@ -259,9 +283,9 @@ Item {
         x: island.width > 650 ? island.width*.53 : island.width-width-14; y: island.height*(island.width > 650 ? .30 : .47)
         iconName: "activity"; text: "Processes"
         value: island.processCount < 0 ? "—" : island.processCount.toString()
-        active: portButton.hovered; onClicked: island.volcanoClicked()
+        active: portButton.hovered; onClicked: island.portClicked()
         ToolTip.visible: hovered
-        ToolTip.text: "Visible processes · RAM " + (island.ramRatio < 0 ? "unavailable" : (island.ramRatio*100).toFixed(0)+"%")
+        ToolTip.text: "Processes by memory · RAM " + (island.ramRatio < 0 ? "unavailable" : (island.ramRatio*100).toFixed(0)+"%")
     }
     SceneTag {
         id: alertsTag

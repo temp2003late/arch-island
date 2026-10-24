@@ -3,7 +3,9 @@ import QtQuick.Controls
 import QtQuick.Controls.impl
 ToolButton {
     id: control
-    Theme { id: theme }
+    property bool night: false
+    property real darkness: night ? 1 : 0
+    Theme { id: theme; night: control.night; darkness: control.darkness }
     property string iconName: "settings"
     property bool selected: false
     property bool light: false
@@ -23,7 +25,7 @@ ToolButton {
             anchors.centerIn: parent; width: 21; height: 21
             source: "qrc:/assets/icons/" + control.iconName + ".svg"
             sourceSize: Qt.size(42,42)
-            color: control.selected ? theme.brass : control.light ? theme.navy : theme.ivory
+            color: control.selected ? theme.brass : control.light ? theme.text : theme.ivory
             opacity: control.enabled ? (control.selected || control.hovered ? 1 : 0.75) : 0.3
         }
     }

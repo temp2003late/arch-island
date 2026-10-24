@@ -20,22 +20,21 @@ void glow(QPainter *p, QPointF point, double radius, QColor color) {
     p->drawEllipse(point, radius, radius * .65);
 }
 struct Route { QPointF a, b, c; };
-// Foot positions traced on the panorama at its QML size (2000x1000, x=-200).
-// Piecewise straight segments preserve bends and stair landings. Never add a
-// lateral offset: narrow stairs/bridges have no room for decorative wandering.
+// Foot positions traced on the 4K panorama in its 1600x900 QML world.
+// Short paths stay inside clearly visible pavement and dock decking.
 const std::array<QPolygonF,6> residentRoutes = {{
-    // Western stairway, including the turn on the landing.
-    {{502,488},{510,476},{520,460},{525,450},{541,452},{548,439},{550,417},{551,398},{548,386}},
-    // Central street, around the church and down to the lower square.
-    {{704,475},{713,492},{724,501},{747,505},{770,502},{795,501},{808,507},{832,521},{850,534},{860,545}},
-    // Lower promenade and its stone bridge.
-    {{867,546},{882,548},{915,550},{949,548},{976,540},{1005,531},{1037,528},{1070,525}},
-    // Clear strip of the main dock, inside the bend and away from stacked cargo.
-    {{991,672},{1027,668},{1061,660},{1100,650}},
-    // Outer dock: follow the actual decking, not a diagonal over the bay.
-    {{1190,668},{1223,674},{1252,680},{1270,684}},
-    // Upper stone bridge; stop before the lighthouse buildings.
-    {{980,386},{1000,385},{1020,382},{1040,379},{1060,377}}
+    // Steps descending toward the western waterfront.
+    {{377,490},{382,496},{390,502},{396,509},{402,515},{409,521}},
+    // Central bridge's level parapet-side walkway.
+    {{570,450},{595,444},{620,438},{645,432},{670,426}},
+    // Church forecourt; keep away from the stair edge.
+    {{804,355},{823,355},{843,356},{862,357},{880,359}},
+    // Main harbor deck, along the inside of its near edge.
+    {{1048,503},{1075,511},{1100,518},{1125,525}},
+    // Outer dock, short of the posts and cargo stacks.
+    {{1160,535},{1180,541},{1200,547},{1220,553}},
+    // Western pier's open deck.
+    {{117,530},{140,535},{160,538},{181,539}}
 }};
 const auto routeLengths = [] {
     std::array<double,6> lengths{};
@@ -74,7 +73,8 @@ bool WorldLife::waterAt(QPointF point, double margin) const {
     for (int i=0;i<9;++i) {
         const double angle=(i-1)*pi/4;
         const QPointF sample=point+(i ? QPointF(std::cos(angle)*margin,std::sin(angle)*margin) : QPointF());
-        const int x=int((sample.x()+200)*1774/2000), y=int(sample.y()*887/1000);
+        const int x=int(sample.x()*m_waterMask.width()/1600),
+                  y=int(sample.y()*m_waterMask.height()/900);
         if (x<0 || y<0 || x>=m_waterMask.width() || y>=m_waterMask.height()
             || qRed(reinterpret_cast<const QRgb *>(m_waterMask.constScanLine(y))[x])<221) return false;
         if (margin==0) break;
@@ -100,21 +100,21 @@ void WorldLife::setDarkness(double value) {
 void WorldLife::paint(QPainter *p) {
     if (width() <= 0 || height() <= 0) return;
     p->save();
-    p->scale(width()/1600, height()/1000);
+    p->scale(width()/1600, height()/900);
     p->setRenderHint(QPainter::Antialiasing);
     const double t = m_time, night = m_darkness;
     const double wind=.58*std::sin(t*.173)+.27*std::sin(t*.317+1.2)+.15*std::sin(t*.071+2.4);
 
     // Perspective-compressed ripples in open water; no waves laid over the island.
-    const QRectF water[] = {{-180,785,1900,205},{-170,450,270,310},
-                            {1390,380,380,390},{260,630,290,110}};
+    const QRectF water[] = {{0,780,1600,110},{0,330,150,300},
+                            {1450,400,150,250},{610,565,480,170}};
     for (int region=0; region<4; ++region) {
         const auto area = water[region];
         for (int i=0; i<32; ++i) {
             const double phase = cycle(t * (.065 + (i%5)*.007) + i*.618);
             const double x = area.x() + cycle(i*.754877 + region*.21)*area.width();
             const double y = area.y() + cycle(i*.56984)*area.height() + phase*8;
-            const double depth = std::clamp((y-260)/740, .08, 1.0);
+            const double depth = std::clamp((y-165)/735, .08, 1.0);
             QColor foam(170,228,239, int((16+26*(1-night))*std::sin(pi*phase)));
             p->setPen(QPen(foam, .5 + depth*.8, Qt::SolidLine, Qt::RoundCap));
             p->setBrush(Qt::NoBrush);
@@ -129,10 +129,10 @@ void WorldLife::paint(QPainter *p) {
 
     // Breakers spread along the beach, then dissolve instead of pulsing in place.
     const Route shores[] = {
-        {{410,574},{480,574},{595,625}},
-        {{560,647},{535,680},{545,710}},
-        {{719,789},{843,824},{959,846}},
-        {{1268,543},{1330,525},{1370,558}}
+        {{370,585},{440,565},{510,552}},
+        {{680,526},{730,518},{775,515}},
+        {{400,820},{480,855},{600,888}},
+        {{1450,498},{1500,486},{1545,480}}
     };
     for (int shore=0; shore<4; ++shore) for (int i=0; i<3; ++i) {
         const double phase = cycle(t/(6.137+shore*.731+i*.193)+i*.381966+shore*.23);
@@ -156,7 +156,7 @@ void WorldLife::paint(QPainter *p) {
     }
 
     // Small eddies are water-clipped, including around foreground dock piles.
-    const QPointF eddies[]={{1011,774},{1125,764},{1246,778},{1436,796},{737,793}};
+    const QPointF eddies[]={{1085,570},{1170,598},{1270,607},{1455,805},{630,650}};
     for (int e=0;e<5;++e) for (int j=0;j<3;++j) {
         const double age=cycle(t/(5.31+e*.419+j*.271)+j*.381966+e*.217);
         const double radius=3+age*(9+e);
@@ -170,8 +170,8 @@ void WorldLife::paint(QPainter *p) {
     // Fishing skiffs live on the distant sea; shadows, sails and wakes give volume.
     for (int i=0; i<3; ++i) {
         const double phase = t*(.012+i*.002)+i*2.1;
-        const QPointF center(i==0 ? 75+1.1*std::sin(phase) : 1450+i*70+1.3*std::sin(phase),
-                             305+i*68+.35*std::sin(t*.7+i));
+        const QPointF center(i==0 ? 80+1.1*std::sin(phase) : 1030+i*80+1.3*std::sin(phase),
+                             210+i*12+.35*std::sin(t*.7+i));
         p->save(); p->translate(center); p->scale(.45+i*.12,.45+i*.12);
         p->setPen(QPen(QColor(167,218,230,80),1));
         p->drawLine(QPointF(-32,5),QPointF(-12,2));
@@ -230,7 +230,7 @@ void WorldLife::paint(QPainter *p) {
     }
 
     // Cooking smoke rises from inhabited houses, with different wind and timing.
-    const QPointF chimneys[] = {{509,307},{678,364},{736,414},{986,476},{1121,477}};
+    const QPointF chimneys[] = {{681,244},{735,291},{933,320},{1000,352},{1165,416}};
     for (int chimney=0; chimney<5; ++chimney) for (int i=0; i<4; ++i) {
         const double phase = cycle(t/(9+chimney*.8)+i*.25+chimney*.17);
         const QPointF point = chimneys[chimney]+QPointF(phase*24+(wind*5+std::sin(t*.3+chimney)*3)*phase,-phase*44);

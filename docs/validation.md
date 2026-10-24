@@ -1,3 +1,56 @@
+# Підсумкова перевірка 0.1.0 — 2026-10-24
+
+Функціональну версію Arthelm Beacon 0.1.0 завершено й перевірено локально. Нових відомих функціональних блокерів у перевіреному середовищі немає. Попередні записи нижче збережені як історія; зокрема старий збій GPU-тесту кліку виправлено.
+
+## Виправлення та фінальний стан
+
+- Точна причина старого збою — клік у невидимий центр порту при кадруванні високого вузького вікна. Клік по резиденції проходив. Тест тепер бере перетин області об’єкта, сцени та вікна, а не надсилає подію за їхні межі.
+- CPU відкриває список процесів за CPU; Processes відкриває список за пам’яттю. Позначки залишаються доступними при повністю обрізаному порту чи резиденції. Реальні кліки перевірено на мінімальному та високому вузькому вікнах.
+- Підключено обидві панорами 3840 × 2160, PNG-парусник, прозорі логотипи, повну денну/нічну палітру разом із підказками та секундний цифровий перехід. Напис In Development замінено на номер версії.
+- `.SRCINFO` повторно згенеровано через `makepkg --printsrcinfo`; залежність `qt6-shadertools` синхронізовано з PKGBUILD.
+
+## Середовище й результати
+
+Arch Linux x86_64, GCC 16.2.1, Qt 6.12.0, CMake 4.4.4, Ninja 1.13.2, Wayland і XWayland/XCB; апаратний рендер OpenGL. Числа Qt Test включають init/cleanup.
+
+| Перевірка | Результат |
+| --- | --- |
+| Чиста Release-збірка в `build-final` | Пройшла без попередніх об’єктів збірки |
+| Core / GUI offscreen у чистій збірці | 17 / 12 PASS, обидва CTest-набори пройшли, 24.63 с |
+| Повний GUI, Wayland/OpenGL, фінальні джерела | 12 PASS, 18.11 с |
+| Повний GUI, XCB/OpenGL, фінальні джерела | 12 PASS, 18.56 с |
+| Повний GUI, offscreen software, масштаб 200% | 12 PASS, 18.75 с |
+| AddressSanitizer + UBSan, Debug, фінальні джерела | Обидва CTest-набори пройшли, 28.83 с; `detect_leaks=1`, жодних повідомлень про помилки чи витоки |
+| Qt 6 qmllint для Theme, ActionButton, IconButton | Пройшов; повний QML-інтерфейс також завантажується без engine warnings у GUI-наборах |
+| Desktop entry / синтаксис shell-скриптів | `desktop-file-validate` та `bash -n` пройшли |
+| Повторне створення маски | Побітово тотожне наявній `scene-mask.png` |
+| Вимірювання суміщення 4K-панорам | Шість локальних перевірок відтворили задокументовані зсуви; GPU використовує приблизну корекцію |
+| Встановлення через DESTDIR | Пройшло; бінарник, desktop entry, іконка й ліцензії присутні |
+| Повний цикл фінального makepkg | Збірка, `check()`, `package()` пройшли; тести 17 / 12 PASS, 24.58 с |
+| Бінарник, витягнутий із фінального Arch-пакунка | `--smoke-test` з `/tmp` пройшов на software, Wayland і XCB |
+| Візуальний перегляд | День/ніч 1600 × 1000 та мінімальне вікно 800 × 640 перевірено; screenshots оновлено |
+
+GUI-набори перевіряють реальні метрики й історію, списки процесів, обидва сортування, усі діалогові вікна, доступність позначок, обрізані області кліку, паузу/відновлення, мінімізацію, фон логотипа, проміжні кольори та зміну напряму переходу. GPU-перевірки підтверджують рух моря й нерухомість контрольної ділянки даху. Код активного парусника завантажує саме `assets/art/sailboat.png`.
+
+## Ресурси й стабільність
+
+Виміряно лише запущений процес застосунку на Wayland. CPU наведено як частку одного логічного ядра; це не відсоток усієї системи й не виміряний FPS.
+
+| Режим | CPU | RSS |
+| --- | --- | --- |
+| Анімації, 20.02 с після прогріву | 24.63% одного ядра | 304.62 MiB |
+| Reduce decorative animation, 20.01 с | 1.05% одного ядра | 301.59 MiB |
+
+Окремий 120-секундний запуск завершився штатно. RSS на 15/45/75/105 с: 304.11 / 304.30 / 304.48 / 304.30 MiB. У цьому інтервалі сталого зростання не спостерігалося.
+
+## Артефакти та межі перевірки
+
+`dist/` містить фінальний Arch-пакунок x86_64, архів джерел, `SHA256SUMS` і сирі журнали перевірок у `dist/validation/`. Пакунок побудовано з ізольованого локального Git-знімка робочих джерел; його revision/hash належить цьому знімку. Пакунок витягнуто й перевірено без встановлення до системи. Публікацію в upstream/AUR не виконували.
+
+ARM/aarch64, мінімальний Qt 6.4 і збірку в чистому Arch chroot не перевіряли. На цьому Qt/Wayland залишаються платформні text-input warnings. QtTest також видає попередження про invalid metatype під час `QAbstractItemModelTester`; стек показує виклик усередині QtTest/QtCore. Звичайні тести та sanitizer-набори при цьому проходять. Ці попередження не приховано.
+
+---
+
 # Перевірка MVP — 05.10.2026
 
 Середовище: Arch Linux x86_64, Qt 6.11.2, GCC 16.2.1, Ninja 1.13.2, Intel Core i5-1235U (12 логічних CPU), 15.34 GiB RAM, Hyprland/Wayland і XWayland. Під час початкової перевірки системного CMake не було: офіційний бінарний CMake 4.1.2 розпаковано у `/tmp/arch-island-tools/cmake-4.1.2-linux-x86_64` без зміни системних пакетів. Під час підготовки комітів уже доступний системний CMake 4.4.4; ним перевірено проміжні дерева Git.
@@ -115,3 +168,47 @@ The reference's new mountain architecture, light trails and exact artwork are no
 - Wayland hardware `islandInteraction`: passed (12.43 s), including water/town animation, stable roof pixels, pause/resume, process drawer, settings and resizing. No QML engine warnings; the existing Wayland text-input focus warnings remain.
 - Inspected day/night and 800×640 screenshots. The updated README image is an actual offscreen/software capture, not the reference mockup.
 - This update adapts the reference artwork to the existing shoreline geometry. Fine details can vary across the generated lighting variants. Storage remains filesystem occupancy; no SMART health or active-session count is claimed.
+
+## Supplied 4K panorama integration — 2026-10-24
+
+- Embedded `island.png` and `island_night.png`, both 3840 × 2160; rebuilt water/palm mask at 1920 × 1080 and moved the logical world to 1600 × 900 without stretching artwork.
+- Retraced resident routes, harbor and residence hit areas, lighthouse glow/beam, scene connectors, boat placement and coastal effects. Mask tests cover architecture, docks, foreground rocks and open water. Resident tests cover all 18 inhabitants over repeated return trips.
+- Native edge correlation reproduced the six documented offsets. GPU sampling applies a smooth approximate correction; software fallback uses the original supplied pair. Fine generated texture differences remain.
+- Release configuration and build passed. `ctest --test-dir build --output-on-failure`: both suites passed, 25.17 s (core 6.38 s, offscreen GUI 18.78 s).
+- Wayland hardware `islandInteraction` passed, 11.56 s. Animated water and town changed while the sampled church roof stayed pixel-identical; frozen frames stayed stable. Process drawers, settings, reduced motion, resize and minimize/restore passed with no QML engine warnings. Existing Wayland text-input platform warnings remain.
+- Inspected offscreen software captures at 1600 × 1000 and 800 × 640, in day and night modes. Updated `docs/arch-island.png` and added `docs/arch-island-night.png`. The current Wayland display constrains window size, so its capture was used for GPU behavior rather than the full-size documentation preview.
+- Fixed a pre-existing build reference to the absent, untracked `assets/arch-island.svg`: desktop installation now uses the existing computer icon under the expected `arch-island.svg` name.
+
+- Temporary staged installation passed; its executable also passed `--smoke-test` from `/tmp` with the offscreen software backend, confirming embedded resources load independently of the working directory.
+
+### Existing sailboat artwork
+
+Replaced the scene's procedural boat mesh with the embedded transparent `assets/art/sailboat.png` image. The shared clock still drives gentle bobbing and roll, including pause/resume. Release rebuild passed; targeted offscreen tests `lightingTransitionKeepsState`, `continuousSailing` and `islandInteraction` passed (5 cases including setup/cleanup, 17.50 s). Inspected the full-size daytime capture and refreshed both documentation screenshots.
+
+### Full night palette
+
+Night mode now changes the header, footer, metrics panel, all metric cards, icon backgrounds, text, separators and chart accents. The existing day/night/automatic setting controls both scenery and chrome. Hardware rendering also removes the bright backing from the brand mark; software retains the original small raster mark.
+
+The new `nightThemeCoversChrome` regression test checks actual rendered background brightness across the header, footer, metrics panel and cards over night → day → night transitions. It passed on Wayland hardware rendering (3 cases including setup/cleanup, 1.12 s), without QML warnings. Existing Wayland text-input platform warnings remain. Full-size software screenshots were inspected and refreshed.
+
+The broader Wayland interaction run passed the new night palette and GPU animation checks but failed its scene residence click in the current narrow compositor-constrained window. Maximizing was not honored by the compositor. This is separate from theme switching; the same complete interaction test passed using offscreen software rendering.
+
+Release rebuild and final CTest run passed: core 6.43 s, offscreen GUI 19.79 s, total 26.22 s. No failures in either suite.
+
+### Logo backing matches its surface
+
+Replaced the GPU-only logo shader with a cached `BrandMark` painted item that removes the raster's white matte in memory. Both header and navigation marks are transparent on hardware and software rendering; original brand bytes stay unchanged. Header ink follows the theme, and navigation ink stays light on its navy panel. The renderer runs only when the item needs painting, with the two processed variants cached once.
+
+Release build passed. `nightThemeCoversChrome`, extended to compare the logo corner against the header's actual rendered background, passed on offscreen software (0.98 s) and Wayland hardware (1.20 s). The complete offscreen `islandInteraction` also passed. Inspected the daytime screenshot: neither header nor rail has a rectangular logo backing. Refreshed day/night captures. This supersedes the earlier software-logo limitation.
+
+### Smooth theme transitions
+
+The full palette and header logo now follow the panorama's single four-second `lightingBlend`, including reversals while a transition is still running. No independent per-widget timers are created. The header brand renderer accepts a continuous ink blend and uses additive premultiplied compositing in a small temporary buffer so opacity remains stable.
+
+Release build passed. The regression test verifies intermediate panel colors against the scene's actual blend, checks that reversing mid-transition does not jump, then checks both settled palettes and the logo's transparent backing. Passed on offscreen software (9.76 s) and Wayland hardware (9.90 s), with no QML engine warnings. Final CTest: both suites passed, core 6.53 s and GUI 28.29 s, total 34.82 s.
+
+### Digital stepped theme switch
+
+Replaced the four-second smooth fade with a one-second driver mapped through irregular holds, short jumps and small rebounds. The scenery, full palette and logo remain synchronized. Three short pulse windows produce a 1–1.5 px chrome shift plus low-opacity cyan/magenta seams and thin scan fragments. The overlay does not accept input, is absent at both endpoints and adds no continuous animation. Reduced decorative animation uses the simple fade without pulses.
+
+Release build passed. Updated transition assertions allow the new duration while checking shared intermediate palette/scene values and reversal continuity. Wayland theme test passed (3.72 s). Final CTest passed both suites: core 6.23 s, GUI 16.89 s, total 23.12 s.

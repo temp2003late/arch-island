@@ -11,7 +11,12 @@ layout(binding = 1) uniform sampler2D source;
 layout(binding = 2) uniform sampler2D maskSource;
 layout(binding = 3) uniform sampler2D nightSource;
 vec4 nightSample(vec2 uv) {
-    return texture(nightSource, uv);
+    // Native 4K edge registration: +2 px at the residence, +5 at the
+    // lighthouse, +3 at the church and +4 at the harbor. Originals stay intact.
+    vec2 offset = vec2(mix(2.0, 5.0, smoothstep(.30, .87, uv.x)),
+                       -1.0 + smoothstep(.20, .35, uv.y));
+    return texture(nightSource, clamp(uv + offset / vec2(3840.0, 2160.0),
+                                    vec2(0.0), vec2(1.0)));
 }
 // One surface and displacement field for both lighting modes. At the endpoints
 // only one panorama is sampled; a blend needs both textures for four seconds.
@@ -32,14 +37,11 @@ void main() {
     vec2 uv=qt_TexCoord0;
     float t=sceneTime;
     vec3 mask=texture(maskSource,uv).rgb;
-    // The summit residence replaces the volcano. Its architecture, including
-    // the new silhouette above the old peak, must remain completely rigid.
-    if (uv.x > .31 && uv.x < .48 && uv.y < .30) mask = vec3(0.0);
     vec4 base=artSample(uv);
-    float depth=smoothstep(.265,1.0,uv.y);
+    float depth=smoothstep(.18,1.0,uv.y);
     // Quiet sheltered turquoise coves, stronger open ocean. Frequencies and
     // directions differ, and slow noise breaks the appearance of uniform bands.
-    float shelter=1.0-.45*exp(-pow((uv.x-.31)/.13,2.0)-pow((uv.y-.59)/.13,2.0));
+    float shelter=1.0-.45*exp(-pow((uv.x-.49)/.20,2.0)-pow((uv.y-.64)/.13,2.0));
     float drift=noise(uv*vec2(12,9)+vec2(t*.023,-t*.017));
     float wide=sin(dot(uv,vec2(23,51))-t*.37+drift*1.2);
     float small=sin(dot(uv,vec2(99,174))+t*.83+drift*2.1);
@@ -56,18 +58,12 @@ void main() {
     vec2 leafUV=uv+vec2(.00037*(wind(t)+.24*sin(t*.91+crownPhase)),
                        .00013*sin(t*.713+crownPhase))*crown;
     c=mix(c,artSample(leafUV),crown*texture(maskSource,leafUV).g);
-    // Cloud advection is restricted to upper sky. The moon and star cores are
-    // stationary; only cloud pixels in the common panorama move imperceptibly.
-    float sky=1.0-smoothstep(.115,.165,uv.y);
-    float moon=1.0-smoothstep(.026,.043,length((uv-vec2(.798,.086))*vec2(1,0.5)));
-    float cloud=sky*(1.0-moon)*mask.g;
-    vec2 cloudUV=uv+vec2(.00035*sin(t*.019+uv.y*9),.00004*sin(t*.027))*cloud;
-    c=mix(c,artSample(cloudUV),cloud*.45);
+    // Sky and stars stay fixed: G contains only traced palm crowns.
     // Moving, irregular glints are surface light, rather than a screen flash.
     float normals=.58*wide+.28*small+.14*ripple;
     c.rgb*=1.0+safe*depth*normals*mix(.025,.015,darkness);
     float glint=pow(max(0.0,small*.65+ripple*.35),9.0)*noise(uv*vec2(360,190)+vec2(t*.16,t*.07));
-    float moonPath=exp(-pow((uv.x-.798)/(.014+.085*depth),2.0))*smoothstep(.255,.34,uv.y);
+    float moonPath=0.25; // Diffuse moonlight; the artwork has no visible moon.
     c.rgb+=safe*depth*glint*mix(vec3(.023,.033,.031),vec3(.033,.05,.072)*moonPath,darkness);
     // Warm reflected fragments remain attached to the painted harbor lights.
     float warm=smoothstep(.06,.26,base.r-base.b)*smoothstep(.53,.72,uv.y)*safe;
@@ -79,8 +75,8 @@ void main() {
     float lamps=smoothstep(.81,.99,base.r)*smoothstep(.26,.5,base.r-base.b)
         *step(.91,seed)*smoothstep(.3,.35,uv.y)*(1.0-smoothstep(.65,.7,uv.y));
     c.rgb*=1.0+lamps*darkness*.025*sin(t*(.19+seed*.17)+seed*53.);
-    // Stars have independent phases; the stable moon is excluded.
-    float stars=sky*(1.-moon)*smoothstep(.42,.7,base.b)*smoothstep(.11,.2,base.b-base.r)*step(.82,seed);
+    // Sparse bright star cores vary subtly without moving the sky.
+    float stars=(1.0-smoothstep(.09,.16,uv.y))*smoothstep(.42,.7,base.b)*smoothstep(.11,.2,base.b-base.r)*step(.82,seed);
     c.rgb*=1.0+stars*darkness*.05*sin(t*(.13+seed*.23)+seed*61.);
     fragColor=c*qt_Opacity;
 }

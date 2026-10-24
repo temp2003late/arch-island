@@ -8,11 +8,22 @@
 #include <QQuickStyle>
 #include <QPainter>
 #include <limits>
+#include <optional>
 #include "sailboat.h"
 #include "monitor.h"
 #include "charts.h"
 #include "worldlife.h"
 #include "sceneclock.h"
+// A world-space landmark can be partly or completely outside a cover-cropped
+// viewport. Click its visible area; never send events beyond the actual scene.
+static std::optional<QPoint> visibleClickPoint(QQuickItem *item, QQuickItem *viewport,
+                                              QQuickWindow *window) {
+    const QRectF visible=item->mapRectToScene(item->boundingRect())
+        .intersected(viewport->mapRectToScene(viewport->boundingRect()))
+        .intersected(QRectF(QPointF(0,0),QSizeF(window->size())));
+    if(visible.width()<4 || visible.height()<4) return std::nullopt;
+    return visible.center().toPoint();
+}
 class GuiTest : public QObject {
     Q_OBJECT
 private slots:
@@ -37,14 +48,19 @@ private slots:
     }
     void sharedMasksProtectArchitecture() {
         const QImage mask(":/assets/art/scene-mask.png");
-        QCOMPARE(mask.size(),QSize(1774,887));
-        for (const QPoint point:{QPoint(1223,260),QPoint(831,371),QPoint(922,397),
-                                QPoint(1331,600),QPoint(752,604),QPoint(17,333),
-                                QPoint(1074,646),QPoint(1140,632),QPoint(1460,658)})
+        QCOMPARE(mask.size(),QSize(1920,1080));
+        // Half-resolution native coordinates: residence, church, lighthouse,
+        // decks, foreground rocks, and both ends of the island silhouette.
+        for (const QPoint point:{QPoint(550,140),QPoint(1040,350),QPoint(1670,250),
+                                QPoint(1450,650),QPoint(200,650),QPoint(200,900),
+                                QPoint(1650,850),QPoint(1820,470)})
             QCOMPARE(qRed(mask.pixel(point)),0);
-        for (const QPoint point:{QPoint(180,710),QPoint(1540,550),QPoint(400,730)})
+        for (const QPoint point:{QPoint(950,900),QPoint(1150,800),QPoint(60,300)})
             QCOMPARE(qRed(mask.pixel(point)),255);
-        QVERIFY(qBlue(mask.pixel(680,173))>0);
+        QCOMPARE(qBlue(mask.pixel(550,140)),0);
+        const QImage day(":/assets/art/island.png"), night(":/assets/art/island_night.png");
+        QCOMPARE(day.size(),QSize(3840,2160));
+        QCOMPARE(night.size(),day.size());
     }
     void lightingTransitionKeepsState() {
         QQmlEngine engine;
@@ -61,7 +77,7 @@ private slots:
         const QPointF position=boat->position();
         scene->setProperty("night",true);
         QTest::qWait(350);
-        QVERIFY(art->opacity()>0 && art->opacity()<.2);
+        QVERIFY(art->opacity()>0 && art->opacity()<1);
         const double current=art->opacity();
         scene->setProperty("night",false);
         QVERIFY(std::abs(art->opacity()-current)<.002);
@@ -82,20 +98,12 @@ private slots:
         // Independently traced pavement/deck boundaries in panorama world space.
         // These are wider areas, not curves generated from the renderer's routes.
         const QPolygonF walkable[] = {
-            {{498,498},{519,473},{534,460},{548,460},{557,439},{560,412},{560,394},
-             {554,378},{540,378},{541,402},{539,421},{538,442},{520,442},{508,460},{494,482}},
-            {{697,470},{707,468},{720,488},{729,493},{755,496},{791,493},{809,499},
-             {840,517},{856,529},{868,546},{853,551},{841,538},{824,528},{801,515},
-             {786,510},{748,514},{718,508},{707,497}},
-            {{860,539},{880,540},{914,539},{949,539},{972,531},{997,523},{1034,519},
-             {1074,516},{1074,532},{1040,536},{1010,540},{980,551},{951,559},
-             {917,561},{879,558},{860,553}},
-            {{980,665},{1024,659},{1059,651},{1098,642},{1109,643},{1109,656},
-             {1065,670},{1030,678},{980,683}},
-            {{1184,660},{1224,665},{1258,673},{1277,677},{1277,691},{1251,690},
-             {1220,684},{1184,676}},
-            {{974,379},{1000,376},{1020,373},{1040,371},{1068,370},{1068,385},
-             {1040,389},{1020,394},{1000,398},{974,398}}
+            {{372,487},{380,483},{415,519},{410,527},{394,514}},
+            {{560,446},{670,419},{680,430},{572,458}},
+            {{799,348},{886,351},{886,367},{799,364}},
+            {{1040,497},{1132,521},{1130,533},{1040,511}},
+            {{1154,530},{1226,548},{1225,560},{1153,541}},
+            {{111,522},{185,533},{185,546},{111,538}}
         };
         // Cover many return trips for every resident, not just the initial frame.
         for (int resident=0; resident<WorldLife::ResidentCount; ++resident) {
@@ -113,9 +121,9 @@ private slots:
     void worldLifeAnimation() {
         QTest::failOnWarning(QRegularExpression("^(QColor|QPainter)::"));
         WorldLife life;
-        life.setSize(QSizeF(1600,1000));
+        life.setSize(QSizeF(1600,900));
         auto frame = [&life] {
-            QImage image(1600,1000,QImage::Format_ARGB32_Premultiplied);
+            QImage image(1600,900,QImage::Format_ARGB32_Premultiplied);
             image.fill(Qt::transparent);
             QPainter painter(&image);
             life.paint(&painter);
@@ -183,8 +191,10 @@ private slots:
                 QVERIFY(frame.left() <= 0.01 && frame.top() <= 0.01);
                 QVERIFY(frame.right() >= size.width()-0.01);
                 QVERIFY(frame.bottom() >= size.height()-0.01);
-                if (size.width() >= 1500 && QByteArray(name) == "nightArtwork")
-                    QVERIFY(art->mapToItem(scene, QPointF(1540, 102)).y() >= 20);
+                // Artwork keeps its 16:9 geometry at every viewport size.
+                QCOMPARE(art->width()/art->height(), 16.0/9.0);
+                if (size.width() >= 1500)
+                    QVERIFY(art->mapToItem(scene, QPointF(475, 70)).y() >= 20);
             }
             for (int step = 0; step < 24; ++step) {
                 scene->setProperty("sailingPhase", step * 3.141592653589793 / 12);
@@ -209,12 +219,16 @@ private slots:
         scene->setProperty("height", 830);
         auto *boat = scene->findChild<QQuickItem *>("sailingBoat");
         QVERIFY(boat);
+        auto *sprite=scene->findChild<QQuickItem *>("sailboatArtwork");
+        QVERIFY(sprite);
+        QCOMPARE(sprite->property("source").toUrl(),QUrl("qrc:/assets/art/sailboat.png"));
+        QTRY_COMPARE(sprite->property("status").toInt(),1); // Image.Ready
         auto *life = scene->findChild<WorldLife *>("worldLife");
         QVERIFY(life);
         auto *art = scene->findChild<QQuickItem *>("nightArtwork");
         QVERIFY(art);
-        // Moon's upper edge must have sky above it in the landscape viewport.
-        QVERIFY(art->mapToItem(qobject_cast<QQuickItem *>(scene.data()), QPointF(1540, 102)).y() >= 20);
+        // Preserve the summit roof below the top edge.
+        QVERIFY(art->mapToItem(qobject_cast<QQuickItem *>(scene.data()), QPointF(475, 70)).y() >= 20);
         QPointF previous = boat->position();
         // Several full circuits, including idle, bursts and unavailable metrics.
         for (int i = 0; i < 7200; ++i) {
@@ -223,7 +237,7 @@ private slots:
             QVERIFY(QMetaObject::invokeMethod(scene.data(), "advanceScene", Q_ARG(QVariant, 0.1)));
             const auto position = boat->position();
             QVERIFY(QLineF(previous, position).length() < 1.0);
-            QVERIFY(position.x() >= 165 && position.x() <= 495);
+            QVERIFY(position.x() >= 775 && position.x() <= 785);
             const auto routeY = boat->property("routeCenterY").toDouble();
             QVERIFY(position.y() > routeY - 36 && position.y() < routeY + 36);
             const auto bottom = boat->mapToItem(qobject_cast<QQuickItem *>(scene.data()),
@@ -241,6 +255,79 @@ private slots:
         QTest::qWait(120);
         QVERIFY(scene->property("sceneTime").toDouble() > time);
         QVERIFY(QLineF(previous, boat->position()).length() < 2.0);
+    }
+    void nightThemeCoversChrome() {
+        QTemporaryDir dir;
+        Settings settings(dir.filePath("settings.ini"));
+        settings.setMode("night");
+        Monitor monitor(&settings);
+        QQmlApplicationEngine engine;
+        QStringList warnings;
+        connect(&engine,&QQmlEngine::warnings,this,[&](const QList<QQmlError> &errors) {
+            for(const auto &error:errors) warnings << error.toString();
+        });
+        engine.rootContext()->setContextProperty("preferences",&settings);
+        engine.rootContext()->setContextProperty("monitor",&monitor);
+        engine.load(QUrl("qrc:/qml/Main.qml"));
+        QCOMPARE(engine.rootObjects().size(),1);
+        auto *window=qobject_cast<QQuickWindow *>(engine.rootObjects().first());
+        QVERIFY(window);
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        auto *scene=window->findChild<QQuickItem *>("islandScene");
+        auto *headerPanel=window->findChild<QQuickItem *>("headerPanel");
+        QVERIFY(scene && headerPanel);
+        for(const bool night:{true,false,true}) {
+            const double before=scene->property("lightingBlend").toDouble();
+            settings.setMode(night ? "night" : "day");
+            QTRY_COMPARE(monitor.night(),night);
+            if(before!=(night ? 1.0 : 0.0)) {
+                QTest::qWait(600);
+                const double progress=scene->property("lightingBlend").toDouble();
+                QVERIFY(progress>0 && progress<1);
+                const QColor panel=headerPanel->property("color").value<QColor>();
+                // The stepped panel must be between its endpoints and use
+                // the very same progress as the panorama crossfade.
+                QVERIFY(std::abs(panel.red()-(241+(13-241)*progress))<=1);
+                QVERIFY(std::abs(panel.green()-(237+(28-237)*progress))<=1);
+                QVERIFY(std::abs(panel.blue()-(229+(43-229)*progress))<=1);
+                if(!night) {
+                    // Reverse mid-transition: neither color nor scene jumps.
+                    settings.setMode("night");
+                    QTRY_VERIFY(monitor.night());
+                    QCOMPARE(headerPanel->property("color").value<QColor>(),panel);
+                    QTest::qWait(120);
+                    settings.setMode("day");
+                    QTRY_VERIFY(!monitor.night());
+                }
+            }
+            QTRY_COMPARE_WITH_TIMEOUT(scene->property("lightingBlend").toDouble(),night ? 1.0 : 0.0,5000);
+            QTest::qWait(120);
+            const auto image=window->grabWindow();
+            QVERIFY(!image.isNull());
+            for(const auto *name:{"headerPanel","metricsPanel","footerPanel","cpuCard","storageCard"}) {
+                const auto *item=window->findChild<QQuickItem *>(name);
+                QVERIFY(item);
+                const auto point=(item->mapToScene(QPointF(6,6))*window->devicePixelRatio()).toPoint();
+                QVERIFY(image.rect().contains(point));
+                const int brightness=qGray(image.pixel(point));
+                QVERIFY2(night ? brightness<85 : brightness>200,name);
+            }
+            // The logo's corner must show the actual panel color, with no
+            // white or gray backing left in either lighting mode.
+            auto *mark=window->findChild<QQuickItem *>("headerBrandMark");
+            auto *header=window->findChild<QQuickItem *>("headerPanel");
+            QVERIFY(mark && header);
+            const auto point=(mark->mapToScene(QPointF(1,1))*window->devicePixelRatio()).toPoint();
+            const QColor expected=header->property("color").value<QColor>();
+            QQmlExpression tooltipBase(engine.rootContext(),window,"palette.toolTipBase");
+            QCOMPARE(tooltipBase.evaluate().value<QColor>(),expected);
+            QVERIFY(!tooltipBase.hasError());
+            const QColor actual=image.pixelColor(point);
+            QVERIFY(std::abs(actual.red()-expected.red())<=3);
+            QVERIFY(std::abs(actual.green()-expected.green())<=3);
+            QVERIFY(std::abs(actual.blue()-expected.blue())<=3);
+        }
+        QVERIFY2(warnings.isEmpty(),qPrintable(warnings.join('\n')));
     }
     void islandInteraction() {
         QTemporaryDir dir;
@@ -319,15 +406,15 @@ private slots:
             const QImage after = fullAfter.copy(town);
             QVERIFY(before != after);
             const auto artworkRect=[&](QRectF native) {
-                const QPointF a(native.left()*2000/1774,native.top()*1000/887);
-                const QPointF b(native.right()*2000/1774,native.bottom()*1000/887);
+                const QPointF a(native.left()*1600/3840,native.top()*900/2160);
+                const QPointF b(native.right()*1600/3840,native.bottom()*900/2160);
                 return QRectF(art->mapToScene(a)*dpr,art->mapToScene(b)*dpr).toAlignedRect();
             };
-            const QRect sea=artworkRect(QRectF(1000,780,90,48));
+            const QRect sea=artworkRect(QRectF(2200,1850,180,90));
             QVERIFY(fullBefore.rect().contains(sea));
             QVERIFY(fullBefore.copy(sea)!=fullAfter.copy(sea));
             // A solid roof stays pixel-identical while neighboring waves move.
-            const QRect roof=artworkRect(QRectF(810,365,8,4));
+            const QRect roof=artworkRect(QRectF(2010,663,14,7));
             QVERIFY(fullBefore.rect().contains(roof));
             QCOMPARE(fullBefore.copy(roof),fullAfter.copy(roof));
             QTest::qWait(120);
@@ -344,8 +431,11 @@ private slots:
         }
         auto *volcano = window->findChild<QQuickItem *>("volcanoButton");
         QVERIFY(volcano);
+        const auto summitPoint=visibleClickPoint(volcano,scene,window);
+        auto *cpuTag=window->findChild<QQuickItem *>("cpuSceneTag");
+        QVERIFY(cpuTag);
         QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
-            volcano->mapToScene(QPointF(volcano->width()/2,volcano->height()/2)).toPoint());
+            summitPoint.value_or(cpuTag->mapToScene(QPointF(cpuTag->width()/2,cpuTag->height()/2)).toPoint()));
         QTRY_VERIFY(monitor.processesOpen()); QVERIFY(!monitor.sortByMemory());
         QTRY_VERIFY_WITH_TIMEOUT(monitor.processes()->rowCount() > 0, 5000);
         QTRY_VERIFY_WITH_TIMEOUT(monitor.processes()->data(monitor.processes()->index(0), ProcessModel::CpuRole).toDouble() >= 0, 5000);
@@ -355,8 +445,11 @@ private slots:
         QVERIFY(QMetaObject::invokeMethod(drawer,"close"));
         QTRY_VERIFY(!monitor.processesOpen());
         auto *port = window->findChild<QQuickItem *>("portButton"); QVERIFY(port);
+        auto *processTag=window->findChild<QQuickItem *>("ramSceneTag");
+        QVERIFY(processTag);
+        const auto portPoint=visibleClickPoint(port,scene,window);
         QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
-            port->mapToScene(QPointF(port->width()/2,port->height()/2)).toPoint());
+            portPoint.value_or(processTag->mapToScene(QPointF(processTag->width()/2,processTag->height()/2)).toPoint()));
         QTRY_VERIFY(monitor.processesOpen()); QVERIFY(monitor.sortByMemory());
         QVERIFY(QMetaObject::invokeMethod(drawer,"close"));
         QTRY_VERIFY(!monitor.processesOpen());
@@ -373,10 +466,30 @@ private slots:
         auto *dayTransition = window->findChild<QQuickItem *>("nightArtwork");
         QVERIFY(dayTransition);
         QTRY_VERIFY(dayTransition->opacity() < 0.001);
-        if (!screenshotDir.isEmpty()) QVERIFY(window->grabWindow().save(screenshotDir + "/day.png"));
+        if (!screenshotDir.isEmpty()) {
+            QTest::mouseMove(window,QPoint(window->width()-8,8));
+            QTest::qWait(180);
+            QVERIFY(window->grabWindow().save(screenshotDir + "/day.png"));
+        }
         settings.setReducedMotion(false);
         window->resize(800,640); QTest::qWait(200);
         QVERIFY(scene->width() > 0 && scene->height() > 0);
+        // Both process views remain reachable from native badges, including
+        // tall/narrow crops where a painted landmark is entirely offscreen.
+        for(const QSize size:{QSize(800,640),QSize(800,1100)}) {
+            window->resize(size); QTest::qWait(150);
+            for(const auto &action:{qMakePair(cpuTag,false),qMakePair(processTag,true)}) {
+                const auto point=visibleClickPoint(action.first,scene,window);
+                QVERIFY(point);
+                QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,*point);
+                QTRY_VERIFY(monitor.processesOpen());
+                QCOMPARE(monitor.sortByMemory(),action.second);
+                QVERIFY(QMetaObject::invokeMethod(drawer,"close"));
+                QTRY_VERIFY(!monitor.processesOpen());
+                QTest::qWait(200);
+            }
+        }
+        window->resize(800,640); QTest::qWait(150);
         if (!screenshotDir.isEmpty()) QVERIFY(window->grabWindow().save(screenshotDir + "/small.png"));
         window->showMinimized();
         QTRY_VERIFY(!scene->property("animate").toBool());

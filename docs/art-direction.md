@@ -2,9 +2,22 @@
 
 The scene is an original generated environment inspired by the supplied concept's atmosphere. It is not a crop of the reference screenshot and contains no UI, labels, numbers or charts. All controls, values, plots and interactive overlays are rendered by Qt.
 
-Generation used the built-in `image_gen` tool, not the CLI/API fallback. No image-generation or network API is used by the application at runtime.
+Earlier artwork used the built-in `image_gen` tool. The current 4K panoramas were supplied by the owner after generation through their API workflow. No image-generation or network API is used by the application at runtime.
 
-## Assets
+## Current 4K scene · 2026-10-24
+
+- `assets/art/island.png`: supplied daylight master, 3840 × 2160 RGB PNG.
+- `assets/art/island_night.png`: supplied night lighting edit, same dimensions.
+- `assets/art/scene-mask.png`: code-generated 1920 × 1080 mask; R is water, G is attached palm crowns, B is unused. Geometry is traced in a 1600 × 900 logical world. The original panoramas are embedded unchanged.
+- The sailboat uses the existing transparent `assets/art/sailboat.png` sprite, embedded in the executable, with gentle bobbing and roll from the shared scene clock.
+
+The day prompt refined Mediterranean limestone, terracotta, palms, cliffs and clear coastal water, requesting preservation of the composition and excluding UI, text and boats. The night prompt requested illumination-only changes, deep blue ambient light, warm existing windows and lighthouse lantern, sparse stars and no visible moon. The owner supplied the final files; exact API request settings and usage are not recorded in the repository.
+
+Native edge checks measure night offsets of (2, −1) px at the residence, (5, −1) at the lighthouse, (3, 0) at the church, (2, 0) at the bridge, (4, −1) at the crane and (4, 0) at a foreground rock. The GPU shader smoothly varies its sampling correction across the image. This reduces registration errors; it does not establish pixel-identical geometry. Software rendering uses the uncorrected supplied pair.
+
+The previous panoramas below are historical generation records and are no longer loaded or required by the build.
+
+## Historical assets
 
 - `assets/art/island-night.png` — cinematic nighttime environment.
 - `assets/art/island-day.png` — lighting edit preserving the nighttime scene's layout.
@@ -48,7 +61,7 @@ The ivory header pairs the Pixel Sail mark and Arthelm wordmark with a quiet sys
 
 ## Beacon scene completion · 2026-10-24
 
-Built-in imagegen produced `assets/art/beacon-day.png` and `assets/art/beacon-night.png`. Original panoramas remain available as source material; the executable embeds the two Beacon variants. The new artwork adapts the reference residence while preserving the existing shoreline and village layout. QML renders all labels, connectors, signal-route lights and interactions. The summit is excluded from surface displacement; volcanic effects have been removed. The night shader uses the new moon position and no longer applies the old tower registration offset.
+Built-in imagegen produced `assets/art/beacon-day.png` and `assets/art/beacon-night.png`. These earlier Beacon variants have now been superseded by the supplied 4K pair. The new artwork adapts the reference residence while preserving the existing shoreline and village layout. QML renders all labels, connectors, signal-route lights and interactions. The summit is excluded from surface displacement; volcanic effects have been removed. The night shader uses the new moon position and no longer applies the old tower registration offset.
 
 Day prompt (inputs: original daylight panorama as edit target, `arthelm_beacon.png` as style reference):
 
@@ -59,3 +72,11 @@ Night prompt (input: generated Beacon daylight panorama):
 > Use case: lighting-weather. Edit target: supplied panorama. Create its exact aligned nighttime counterpart for a live application crossfade. Change ONLY illumination and sky to calm deep blue moonlight, subtle stars and warm lit windows, brightest lighthouse lantern and summit residence windows. Preserve every pixel position of ALL architecture, summit residence, cliffs, palms, docks, horizon and ocean. Same 2:1 full panorama framing and dimensions. No volcano, lava, smoke, boats, UI, labels, light routes, text, or border. Keep architecture crisp and sea readable, cinematic refined nighttime scene.
 
 The prompts request alignment; generated textures can differ in fine details. The shared geometric layout and transition are visually inspected, not claimed to be pixel-identical. Existing masks remain conservative around the original shoreline, with an explicit stationary guard around the new summit.
+
+## Complete nighttime interface
+
+The same `monitor.night` state now drives both the landscape and application chrome. `Theme.qml` supplies semantic panel, card, text, muted text, separator and chart colors; metric cards and header icon buttons receive the active mode explicitly. Night panels use `#0d1c2b`, cards `#142638`, text `#e1e7eb` and secondary text `#a6b5c2`. Day mode retains the ivory palette. Automatic mode uses the existing local-time schedule.
+
+`BrandMark` draws the original raster mark with its white matte removed in memory on both hardware and software rendering. The header uses navy ink in day mode and ivory ink at night; the dark navigation rail always uses ivory ink. Its background stays transparent and matches the underlying panel. Dialogs and the processes drawer retain their existing dark surfaces.
+
+Theme colors and header logo ink use the same `Island.lightingBlend` as the day/night panorama. A one-second linear driver feeds an irregular stepped curve with holds, short jumps and small rebounds. A few brief pulses offset the chrome by 1–1.5 pixels and draw restrained cyan/magenta seams and scan fragments. The effect is idle after the switch and does not intercept input. Disabling decorative animation removes the glitch pulses and uses a simple one-second fade. All panels, cards, text, icons and chart accents share the same progress; reversing a transition preserves its current value. Brand ink blends the cached variants in a small premultiplied buffer, preserving edge transparency.

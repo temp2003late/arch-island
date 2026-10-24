@@ -5,7 +5,9 @@ import QtQuick.Layouts
 import ArchIsland 1.0
 Rectangle {
     id: card
-    Theme { id: theme }
+    property bool night: false
+    property real darkness: night ? 1 : 0
+    Theme { id: theme; night: card.night; darkness: card.darkness }
     property string caption: "CPU"
     property string value: "—"
     property string unit: ""
@@ -19,7 +21,7 @@ Rectangle {
     readonly property bool compact: height < 90
     implicitHeight: 124
     radius: 9
-    color: "#f3efe8"
+    color: theme.card
     border.color: theme.line
     HoverHandler { id: hover }
     ToolTip.visible: hover.hovered && card.compact
@@ -37,16 +39,16 @@ Rectangle {
             IconImage {
                 anchors.centerIn: parent; width: 23; height: 23
                 source: "qrc:/assets/icons/" + card.iconName + ".svg"
-                sourceSize: Qt.size(46,46); color: theme.navy
+                sourceSize: Qt.size(46,46); color: theme.text
             }
         }
         ColumnLayout {
             Layout.fillWidth: true; spacing: 5
-            Label { text: card.caption; color: theme.navy; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+            Label { text: card.caption; color: theme.text; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
             RowLayout {
                 Layout.fillWidth: true; spacing: 4
                 Label {
-                    text: card.value; color: theme.navy
+                    text: card.value; color: theme.text
                     font.pixelSize: card.width < 240 ? 22 : 27; font.weight: Font.Medium
                     Layout.minimumWidth: 0; elide: Text.ElideRight
                 }

@@ -1,4 +1,5 @@
 #include "charts.h"
+#include "brandmark.h"
 #include "sailboat.h"
 #include "worldlife.h"
 #include "sceneclock.h"
@@ -85,6 +86,7 @@ void GaugeArc::paint(QPainter *p) {
     }
 }
 void registerVisualTypes() {
+    qmlRegisterType<BrandMark>("ArchIsland",1,0,"BrandMark");
     qmlRegisterType<SceneClock>("ArchIsland",1,0,"SceneClock");
     qmlRegisterType<WorldLife>("ArchIsland",1,0,"WorldLife");
     qmlRegisterType<Sailboat>("ArchIsland",1,0,"Sailboat");
